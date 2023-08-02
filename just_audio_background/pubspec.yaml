@@ -9,7 +9,10 @@ topics:
   - background
 
 dependencies:
-  just_audio_platform_interface: ^4.2.1
+  just_audio_platform_interface: 
+    git:
+      url: https://github.com/MSOB7YY/just_audio
+      path: just_audio_platform_interface/
   # just_audio_platform_interface:
   #   path: ../just_audio_platform_interface
   audio_service: ^0.18.9
