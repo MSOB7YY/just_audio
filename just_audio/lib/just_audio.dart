@@ -2720,6 +2720,7 @@ class LockCachingAudioSource extends StreamAudioSource {
   final Uri uri;
   final Map<String, String>? headers;
   final Future<File> cacheFile;
+  final void Function(File cacheFile)? onCacheDone;
   int _progress = 0;
   final _requests = <_StreamingByteRangeRequest>[];
   final _downloadProgressSubject = BehaviorSubject<double>();
@@ -2734,6 +2735,7 @@ class LockCachingAudioSource extends StreamAudioSource {
   LockCachingAudioSource(
     this.uri, {
     this.headers,
+    this.onCacheDone,
     File? cacheFile,
     dynamic tag,
   })  : cacheFile =
@@ -2976,6 +2978,7 @@ class LockCachingAudioSource extends StreamAudioSource {
       await subscription.cancel();
       httpClient.close();
       _downloading = false;
+      if (onCacheDone != null) onCacheDone!(cacheFile);
     }, onError: (Object e, StackTrace stackTrace) async {
       (await _partialCacheFile).deleteSync();
       httpClient.close();
