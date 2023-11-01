@@ -733,6 +733,29 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
             if (offloadSchedulingEnabled) {
                 builder.setRenderersFactory(new DefaultRenderersFactory(context).setEnableAudioOffload(true));
             }
+            final long minSilenceDur = 2_000_000; // 2 seconds
+            final long paddingSilenceDur = 200_000; // 200 ms
+            final short silenceThresholdPCM = 512;
+            builder.setRenderersFactory(
+                    new DefaultRenderersFactory(context) {
+                        protected AudioSink buildAudioSink(
+                                Context context,
+                                boolean enableFloatOutput,
+                                boolean enableAudioTrackPlaybackParams) {
+                            return new DefaultAudioSink.Builder()
+                                    .setAudioProcessorChain(
+                                            new DefaultAudioSink.DefaultAudioProcessorChain(
+                                                    new AudioProcessor[0], // silence and sonic processor only
+                                                    new SilenceSkippingAudioProcessor(
+                                                            minSilenceDur,
+                                                            paddingSilenceDur,
+                                                            silenceThresholdPCM),
+                                                    new SonicAudioProcessor()))
+                                    .setEnableFloatOutput(enableFloatOutput)
+                                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                                    .build();
+                        }
+                    });
             player = builder.build();
             player.experimentalSetOffloadSchedulingEnabled(offloadSchedulingEnabled);
             setAudioSessionId(player.getAudioSessionId());
