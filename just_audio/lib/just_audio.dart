@@ -896,7 +896,7 @@ class AudioPlayer {
   ///
   /// This method activates the audio session before playback, and will do
   /// nothing if activation of the audio session fails for any reason.
-  Future<void> play() async {
+  Future<void> play({bool waitForCompletion = false}) async {
     if (_disposed) return;
     if (playing) return;
     _playInterrupted = false;
@@ -922,11 +922,11 @@ class AudioPlayer {
           // NOTE: If a load() request happens simultaneously, this may result
           // in two play requests being sent. The platform implementation should
           // ignore the second play request since it is already playing.
-          _sendPlayRequest(await _platform, playCompleter);
+          await _sendPlayRequest(await _platform, playCompleter);
         } else {
           // If the native platform wasn't already active, activating it will
           // implicitly restore the playing state and send a play request.
-          _setPlatformActive(true, playCompleter: playCompleter)
+          await _setPlatformActive(true, playCompleter: playCompleter)
               ?.catchError((dynamic e) async => null);
         }
       }
@@ -934,7 +934,7 @@ class AudioPlayer {
       // Revert if we fail to activate the audio session.
       _playingSubject.add(false);
     }
-    await playCompleter.future;
+    if (waitForCompletion) await playCompleter.future;
   }
 
   /// Pauses the currently playing media. This method does nothing if
