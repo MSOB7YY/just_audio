@@ -15,36 +15,35 @@ import io.flutter.plugin.common.MethodChannel.Result;
  * JustAudioPlugin
  */
 public class JustAudioPlugin implements FlutterPlugin {
-    private MethodChannel channel;
-    private MainMethodCallHandler methodCallHandler;
+  private MethodChannel channel;
+  private MainMethodCallHandler methodCallHandler;
 
-    @Override
-    public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
-        Context applicationContext = binding.getApplicationContext();
-        BinaryMessenger messenger = binding.getBinaryMessenger();
-        methodCallHandler = new MainMethodCallHandler(applicationContext, messenger);
+  @Override
+  public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
+    Context applicationContext = binding.getApplicationContext();
+    BinaryMessenger messenger = binding.getBinaryMessenger();
+    methodCallHandler = new MainMethodCallHandler(applicationContext, messenger);
 
-        channel = new MethodChannel(messenger, "com.ryanheise.just_audio.methods");
-        channel.setMethodCallHandler(methodCallHandler);
-        @SuppressWarnings("deprecation")
-        FlutterEngine engine = binding.getFlutterEngine();
-        engine.addEngineLifecycleListener(new EngineLifecycleListener() {
-            @Override
-            public void onPreEngineRestart() {
-                methodCallHandler.dispose();
-            }
-
-            @Override
-            public void onEngineWillDestroy() {
-            }
-        });
-    }
-
-    @Override
-    public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+    channel = new MethodChannel(messenger, "com.ryanheise.just_audio.methods");
+    channel.setMethodCallHandler(methodCallHandler);
+    @SuppressWarnings("deprecation")
+    FlutterEngine engine = binding.getFlutterEngine();
+    engine.addEngineLifecycleListener(new EngineLifecycleListener() {
+      @Override
+      public void onPreEngineRestart() {
         methodCallHandler.dispose();
-        methodCallHandler = null;
+      }
 
-        channel.setMethodCallHandler(null);
-    }
+      @Override
+      public void onEngineWillDestroy() {}
+    });
+  }
+
+  @Override
+  public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+    methodCallHandler.dispose();
+    methodCallHandler = null;
+
+    channel.setMethodCallHandler(null);
+  }
 }
