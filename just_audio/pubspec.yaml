@@ -18,12 +18,14 @@ dependencies:
     git:
       url: https://github.com/MSOB7YY/just_audio
       path: just_audio_platform_interface/
+      ref: e37fb4ae8ee63dc67365049c1ae226a57a4d0dd9
   # just_audio_platform_interface:
   #   path: ../just_audio_platform_interface
   just_audio_web:
     git:
       url: https://github.com/MSOB7YY/just_audio
       path: just_audio_web/
+      ref: e37fb4ae8ee63dc67365049c1ae226a57a4d0dd9
   # just_audio_web:
   #   path: ../just_audio_web
   audio_session: ^0.1.14
