@@ -22,7 +22,7 @@ public class JustAudioPlugin implements FlutterPlugin {
   public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
     Context applicationContext = binding.getApplicationContext();
     BinaryMessenger messenger = binding.getBinaryMessenger();
-    methodCallHandler = new MainMethodCallHandler(applicationContext, messenger);
+    methodCallHandler = new MainMethodCallHandler(applicationContext, messenger, binding.getTextureRegistry());
 
     channel = new MethodChannel(messenger, "com.ryanheise.just_audio.methods");
     channel.setMethodCallHandler(methodCallHandler);

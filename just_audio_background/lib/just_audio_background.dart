@@ -160,6 +160,7 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
   final InitRequest initRequest;
   final eventController = StreamController<PlaybackEventMessage>.broadcast();
   final playerDataController = StreamController<PlayerDataMessage>.broadcast();
+  final videoDataController = StreamController<VideoDataMessage>.broadcast();
   bool? _playing;
   IcyMetadataMessage? _icyMetadata;
   int? _androidAudioSessionId;
@@ -231,6 +232,10 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
   @override
   Stream<PlayerDataMessage> get playerDataMessageStream =>
       playerDataController.stream;
+
+  @override
+  Stream<VideoDataMessage> get videoDataMessageStream =>
+      videoDataController.stream;
 
   @override
   Future<LoadResponse> load(LoadRequest request) =>
@@ -423,6 +428,7 @@ class _PlayerAudioHandler extends BaseAudioHandler
       audioSourceMessage: _source!,
       initialPosition: request.initialPosition,
       initialIndex: request.initialIndex,
+      videoOptions: request.videoOptions,
     ));
     return LoadResponse(duration: response.duration);
   }

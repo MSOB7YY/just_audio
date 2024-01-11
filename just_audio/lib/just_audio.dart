@@ -14,6 +14,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
 
+export 'package:just_audio_platform_interface/just_audio_platform_interface.dart'
+    show VideoOptions, ByteSize;
+
+typedef VideoInfoData = VideoDataMessage;
+
 const _uuid = Uuid();
 
 JustAudioPlatform? _pluginPlatformCache;
@@ -94,9 +99,12 @@ class AudioPlayer {
   /// subscribe to the new platform's events.
   StreamSubscription<PlayerDataMessage>? _playerDataSubscription;
 
+  StreamSubscription<VideoDataMessage>? _videoDataSubscription;
+
   final String _id;
   final _proxy = _ProxyHttpServer();
   AudioSource? _audioSource;
+  VideoOptions? _videoOptions;
   final Map<String, AudioSource> _audioSources = {};
   bool _disposed = false;
   _InitialSeekValues? _initialSeekValues;
@@ -122,6 +130,8 @@ class AudioPlayer {
   final _sequenceStateSubject = BehaviorSubject<SequenceState?>();
   final _loopModeSubject = BehaviorSubject.seeded(LoopMode.off);
   final _shuffleModeEnabledSubject = BehaviorSubject.seeded(false);
+  final _videoInfoSubject = BehaviorSubject<VideoInfoData>();
+  final _videoTextureIdSubject = BehaviorSubject.seeded(-1);
   final _androidAudioSessionIdSubject = BehaviorSubject<int?>();
   final _positionDiscontinuitySubject =
       PublishSubject<PositionDiscontinuity>(sync: true);
@@ -351,6 +361,15 @@ class AudioPlayer {
 
   /// The previously set [AudioSource], if any.
   AudioSource? get audioSource => _audioSource;
+
+  /// The previously set [VideoOptions], if any.
+  VideoOptions? get videoOptions => _videoOptions;
+
+  /// The currently active video texture id.
+  Stream<VideoInfoData> get videoInfoStream => _videoInfoSubject.stream;
+
+  /// The currently active video texture id.
+  Stream<int> get videoTextureIdStream => _videoTextureIdSubject.stream;
 
   /// The latest [PlaybackEvent].
   PlaybackEvent get playbackEvent => _playbackEvent;
@@ -740,6 +759,7 @@ class AudioPlayer {
     bool preload = true,
     int? initialIndex,
     Duration? initialPosition,
+    VideoOptions? videoOptions,
   }) async {
     if (_disposed) return null;
     _audioSource = null;
@@ -749,6 +769,7 @@ class AudioPlayer {
         currentIndex: initialIndex ?? 0,
         updatePosition: initialPosition ?? Duration.zero));
     _audioSource = source;
+    _videoOptions = videoOptions;
     _broadcastSequence();
     Duration? duration;
     if (playing) preload = true;
@@ -778,12 +799,22 @@ class AudioPlayer {
     if (_active) {
       final initialSeekValues = _initialSeekValues;
       _initialSeekValues = null;
-      return await _load(await _platform, _audioSource!,
-          initialSeekValues: initialSeekValues);
+      return await _load(
+        await _platform,
+        _audioSource!,
+        initialSeekValues: initialSeekValues,
+        videoOptions: _videoOptions,
+      );
     } else {
       // This will implicitly load the current audio source.
       return await _setPlatformActive(true);
     }
+  }
+
+  /// Set a video source, use null to disable video.
+  /// This doesn't affect [setAudioSource]
+  Future<void> setVideo(VideoOptions? video) async {
+    return await (await _platform).setVideo(video);
   }
 
   void _broadcastSequence() {
@@ -812,8 +843,12 @@ class AudioPlayer {
     _audioSources[source._id] = source;
   }
 
-  Future<Duration?> _load(AudioPlayerPlatform platform, AudioSource source,
-      {_InitialSeekValues? initialSeekValues}) async {
+  Future<Duration?> _load(
+    AudioPlayerPlatform platform,
+    AudioSource source, {
+    _InitialSeekValues? initialSeekValues,
+    required VideoOptions? videoOptions,
+  }) async {
     final activationNumber = _activationCount;
     void checkInterruption() {
       if (_activationCount != activationNumber) {
@@ -827,14 +862,14 @@ class AudioPlayer {
       checkInterruption();
       source._shuffle(initialIndex: initialSeekValues?.index ?? 0);
       _broadcastSequence();
-      _durationFuture = platform
-          .load(LoadRequest(
-            audioSourceMessage: source._toMessage(),
-            initialPosition: initialSeekValues?.position,
-            initialIndex: initialSeekValues?.index,
-          ))
-          .then((response) => response.duration);
-      final duration = await _durationFuture;
+      final response = await platform.load(LoadRequest(
+        audioSourceMessage: source._toMessage(),
+        initialPosition: initialSeekValues?.position,
+        initialIndex: initialSeekValues?.index,
+        videoOptions: videoOptions,
+      ));
+      final duration = response.duration;
+
       checkInterruption();
       _durationSubject.add(duration);
       if (platform != _platformValue) {
@@ -868,14 +903,16 @@ class AudioPlayer {
     if (_disposed) return null;
     _setPlatformActive(true)?.catchError((dynamic e) async => null);
     final duration = await _load(
-        await _platform,
-        start == null && end == null
-            ? _audioSource!
-            : ClippingAudioSource(
-                child: _audioSource as UriAudioSource,
-                start: start,
-                end: end,
-              ));
+      await _platform,
+      start == null && end == null
+          ? _audioSource!
+          : ClippingAudioSource(
+              child: _audioSource as UriAudioSource,
+              start: start,
+              end: end,
+            ),
+      videoOptions: _videoOptions,
+    );
     return duration;
   }
 
@@ -1323,11 +1360,17 @@ class AudioPlayer {
           _setPlatformActive(false)?.catchError((dynamic e) async => null);
         }
       }, onError: _playbackEventSubject.addError);
+
+      _videoDataSubscription =
+          platform.videoDataMessageStream.listen((message) {
+        _videoInfoSubject.add(message);
+      });
     }
 
     Future<AudioPlayerPlatform> setPlatform() async {
       _playbackEventSubscription?.cancel();
       _playerDataSubscription?.cancel();
+      _videoDataSubscription?.cancel();
       if (!force) {
         final oldPlatform = _platformValue!;
         if (oldPlatform is! _IdleAudioPlayer) {
@@ -1434,7 +1477,8 @@ class AudioPlayer {
               _InitialSeekValues(position: position, index: currentIndex);
           _initialSeekValues = null;
           final duration = await _load(platform, _audioSource!,
-              initialSeekValues: initialSeekValues);
+              initialSeekValues: initialSeekValues,
+              videoOptions: _videoOptions);
           if (checkInterruption()) return platform;
           durationCompleter.complete(duration);
         } catch (e, stackTrace) {

@@ -54,9 +54,21 @@ class MethodChannelAudioPlayer extends AudioPlayerPlatform {
               PlayerDataMessage.fromMap(map as Map<dynamic, dynamic>));
 
   @override
+  Stream<VideoDataMessage> get videoDataMessageStream =>
+      EventChannel('com.ryanheise.just_audio.video.$id')
+          .receiveBroadcastStream()
+          .map((dynamic map) =>
+              VideoDataMessage.fromMap(map as Map<dynamic, dynamic>));
+
+  @override
   Future<LoadResponse> load(LoadRequest request) async {
     return LoadResponse.fromMap((await _channel
         .invokeMethod<Map<dynamic, dynamic>>('load', request.toMap()))!);
+  }
+
+  @override
+  Future<void> setVideo(VideoOptions? video) async {
+    await _channel.invokeMethod('setVideo', {'video': video?.toMap()});
   }
 
   @override

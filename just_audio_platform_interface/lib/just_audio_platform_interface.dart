@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
@@ -64,7 +65,7 @@ abstract class JustAudioPlatform extends PlatformInterface {
 abstract class AudioPlayerPlatform {
   final String id;
 
-  AudioPlayerPlatform(this.id);
+  const AudioPlayerPlatform(this.id);
 
   /// A broadcast stream of playback events.
   Stream<PlaybackEventMessage> get playbackEventMessageStream {
@@ -76,9 +77,18 @@ abstract class AudioPlayerPlatform {
   Stream<PlayerDataMessage> get playerDataMessageStream =>
       const Stream<PlayerDataMessage>.empty();
 
+  /// A broadcast stream of video updates.
+  Stream<VideoDataMessage> get videoDataMessageStream =>
+      const Stream<VideoDataMessage>.empty();
+
   /// Loads an audio source.
   Future<LoadResponse> load(LoadRequest request) {
     throw UnimplementedError("load() has not been implemented.");
+  }
+
+  /// Set a video source, use null to disable video.
+  Future<void> setVideo(VideoOptions? video) {
+    throw UnimplementedError("setVideo() has not been implemented.");
   }
 
   /// Plays the current audio source at the current index and position.
@@ -263,6 +273,55 @@ class PlayerDataMessage {
       );
 }
 
+class VideoDataMessage {
+  final String id;
+  final int textureId;
+  final int width;
+  final int height;
+  final double frameRate;
+  final int bitrate;
+  final int sampleRate;
+  final int encoderDelay;
+  final int rotationDegrees;
+  final String containerMimeType;
+  final String label;
+  final String language;
+
+  bool get isInitialized => textureId != -1;
+
+  const VideoDataMessage({
+    required this.id,
+    required this.textureId,
+    required this.width,
+    required this.height,
+    required this.frameRate,
+    required this.bitrate,
+    required this.sampleRate,
+    required this.encoderDelay,
+    required this.rotationDegrees,
+    required this.containerMimeType,
+    required this.label,
+    required this.language,
+  });
+
+  static VideoDataMessage fromMap(Map<dynamic, dynamic> map) {
+    return VideoDataMessage(
+      id: map["id"] as String? ?? '',
+      textureId: map["textureId"] as int? ?? -1,
+      width: map["width"] as int? ?? -1,
+      height: map["height"] as int? ?? -1,
+      frameRate: map["frameRate"] as double? ?? -1,
+      bitrate: map["bitrate"] as int? ?? -1,
+      sampleRate: map["sampleRate"] as int? ?? -1,
+      encoderDelay: map["encoderDelay"] as int? ?? -1,
+      rotationDegrees: map["rotationDegrees"] as int? ?? -1,
+      containerMimeType: map["containerMimeType"] as String? ?? '',
+      label: map["label"] as String? ?? '',
+      language: map["language"] as String? ?? '',
+    );
+  }
+}
+
 /// A playback event communicated from the platform implementation to the
 /// Flutter plugin.
 class PlaybackEventMessage {
@@ -275,7 +334,7 @@ class PlaybackEventMessage {
   final int? currentIndex;
   final int? androidAudioSessionId;
 
-  PlaybackEventMessage({
+  const PlaybackEventMessage({
     required this.processingState,
     required this.updateTime,
     required this.updatePosition,
@@ -283,7 +342,7 @@ class PlaybackEventMessage {
     required this.duration,
     required this.icyMetadata,
     required this.currentIndex,
-    required this.androidAudioSessionId,
+    this.androidAudioSessionId,
   });
 
   static PlaybackEventMessage fromMap(Map<dynamic, dynamic> map) =>
@@ -321,7 +380,7 @@ class IcyMetadataMessage {
   final IcyInfoMessage? info;
   final IcyHeadersMessage? headers;
 
-  IcyMetadataMessage({
+  const IcyMetadataMessage({
     required this.info,
     required this.headers,
   });
@@ -343,7 +402,7 @@ class IcyInfoMessage {
   final String? title;
   final String? url;
 
-  IcyInfoMessage({
+  const IcyInfoMessage({
     required this.title,
     required this.url,
   });
@@ -361,7 +420,7 @@ class IcyHeadersMessage {
   final String? url;
   final bool? isPublic;
 
-  IcyHeadersMessage({
+  const IcyHeadersMessage({
     required this.bitrate,
     required this.genre,
     required this.name,
@@ -390,7 +449,7 @@ class InitRequest {
   final List<AudioEffectMessage> darwinAudioEffects;
   final bool? androidOffloadSchedulingEnabled;
 
-  InitRequest({
+  const InitRequest({
     required this.id,
     this.audioLoadConfiguration,
     this.androidAudioEffects = const [],
@@ -416,7 +475,7 @@ class InitRequest {
 class DisposePlayerRequest {
   final String id;
 
-  DisposePlayerRequest({required this.id});
+  const DisposePlayerRequest({required this.id});
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
         'id': id,
@@ -433,7 +492,7 @@ class DisposePlayerResponse {
 /// Information communicated to the platform implementation when disposing of all
 /// player instances.
 class DisposeAllPlayersRequest {
-  DisposeAllPlayersRequest();
+  const DisposeAllPlayersRequest();
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{};
 }
@@ -451,17 +510,20 @@ class LoadRequest {
   final AudioSourceMessage audioSourceMessage;
   final Duration? initialPosition;
   final int? initialIndex;
+  final VideoOptions? videoOptions;
 
-  LoadRequest({
+  const LoadRequest({
     required this.audioSourceMessage,
     this.initialPosition,
     this.initialIndex,
+    this.videoOptions,
   });
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
         'audioSource': audioSourceMessage.toMap(),
         'initialPosition': initialPosition?.inMicroseconds,
         'initialIndex': initialIndex,
+        'videoOptions': videoOptions?.toMap(),
       };
 }
 
@@ -470,7 +532,7 @@ class LoadRequest {
 class LoadResponse {
   final Duration? duration;
 
-  LoadResponse({required this.duration});
+  const LoadResponse({required this.duration});
 
   static LoadResponse fromMap(Map<dynamic, dynamic> map) => LoadResponse(
       duration: map['duration'] == null || map['duration'] as int < 0
@@ -506,7 +568,7 @@ class PauseResponse {
 class SetVolumeRequest {
   final double volume;
 
-  SetVolumeRequest({required this.volume});
+  const SetVolumeRequest({required this.volume});
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
         'volume': volume,
@@ -525,7 +587,7 @@ class SetVolumeResponse {
 class SetSpeedRequest {
   final double speed;
 
-  SetSpeedRequest({required this.speed});
+  const SetSpeedRequest({required this.speed});
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
         'speed': speed,
@@ -544,7 +606,7 @@ class SetSpeedResponse {
 class SetPitchRequest {
   final double pitch;
 
-  SetPitchRequest({required this.pitch});
+  const SetPitchRequest({required this.pitch});
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
         'pitch': pitch,
@@ -563,7 +625,7 @@ class SetPitchResponse {
 class SetSkipSilenceRequest {
   final bool enabled;
 
-  SetSkipSilenceRequest({required this.enabled});
+  const SetSkipSilenceRequest({required this.enabled});
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
         'enabled': enabled,
@@ -582,7 +644,7 @@ class SetSkipSilenceResponse {
 class SetLoopModeRequest {
   final LoopModeMessage loopMode;
 
-  SetLoopModeRequest({required this.loopMode});
+  const SetLoopModeRequest({required this.loopMode});
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
         'loopMode': loopMode.index,
@@ -604,7 +666,7 @@ enum LoopModeMessage { off, one, all }
 class SetShuffleModeRequest {
   final ShuffleModeMessage shuffleMode;
 
-  SetShuffleModeRequest({required this.shuffleMode});
+  const SetShuffleModeRequest({required this.shuffleMode});
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
         'shuffleMode': shuffleMode.index,
@@ -626,7 +688,7 @@ enum ShuffleModeMessage { none, all }
 class SetShuffleOrderRequest {
   final AudioSourceMessage audioSourceMessage;
 
-  SetShuffleOrderRequest({required this.audioSourceMessage});
+  const SetShuffleOrderRequest({required this.audioSourceMessage});
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
         'audioSource': audioSourceMessage.toMap(),
@@ -645,7 +707,7 @@ class SetShuffleOrderResponse {
 class SetAutomaticallyWaitsToMinimizeStallingRequest {
   final bool enabled;
 
-  SetAutomaticallyWaitsToMinimizeStallingRequest({required this.enabled});
+  const SetAutomaticallyWaitsToMinimizeStallingRequest({required this.enabled});
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
         'enabled': enabled,
@@ -665,7 +727,7 @@ class SetAutomaticallyWaitsToMinimizeStallingResponse {
 class SetCanUseNetworkResourcesForLiveStreamingWhilePausedRequest {
   final bool enabled;
 
-  SetCanUseNetworkResourcesForLiveStreamingWhilePausedRequest(
+  const SetCanUseNetworkResourcesForLiveStreamingWhilePausedRequest(
       {required this.enabled});
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
@@ -686,7 +748,7 @@ class SetCanUseNetworkResourcesForLiveStreamingWhilePausedResponse {
 class SetPreferredPeakBitRateRequest {
   final double bitRate;
 
-  SetPreferredPeakBitRateRequest({required this.bitRate});
+  const SetPreferredPeakBitRateRequest({required this.bitRate});
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
         'bitRate': bitRate,
@@ -706,7 +768,7 @@ class SeekRequest {
   final Duration? position;
   final int? index;
 
-  SeekRequest({this.position, this.index});
+  const SeekRequest({this.position, this.index});
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
         'position': position?.inMicroseconds,
@@ -727,7 +789,7 @@ class SetAndroidAudioAttributesRequest {
   final int flags;
   final int usage;
 
-  SetAndroidAudioAttributesRequest({
+  const SetAndroidAudioAttributesRequest({
     required this.contentType,
     required this.flags,
     required this.usage,
@@ -766,7 +828,7 @@ class ConcatenatingInsertAllRequest {
   final List<AudioSourceMessage> children;
   final List<int> shuffleOrder;
 
-  ConcatenatingInsertAllRequest({
+  const ConcatenatingInsertAllRequest({
     required this.id,
     required this.index,
     required this.children,
@@ -796,7 +858,7 @@ class ConcatenatingRemoveRangeRequest {
   final int endIndex;
   final List<int> shuffleOrder;
 
-  ConcatenatingRemoveRangeRequest({
+  const ConcatenatingRemoveRangeRequest({
     required this.id,
     required this.startIndex,
     required this.endIndex,
@@ -826,7 +888,7 @@ class ConcatenatingMoveRequest {
   final int newIndex;
   final List<int> shuffleOrder;
 
-  ConcatenatingMoveRequest({
+  const ConcatenatingMoveRequest({
     required this.id,
     required this.currentIndex,
     required this.newIndex,
@@ -887,7 +949,7 @@ class DarwinLoadControlMessage {
   /// second.
   final double? preferredPeakBitRate;
 
-  DarwinLoadControlMessage({
+  const DarwinLoadControlMessage({
     required this.automaticallyWaitsToMinimizeStalling,
     required this.preferredForwardBufferDuration,
     required this.canUseNetworkResourcesForLiveStreamingWhilePaused,
@@ -932,7 +994,7 @@ class AndroidLoadControlMessage {
   /// (Android) The back buffer duration.
   final Duration backBufferDuration;
 
-  AndroidLoadControlMessage({
+  const AndroidLoadControlMessage({
     required this.minBufferDuration,
     required this.maxBufferDuration,
     required this.bufferForPlaybackDuration,
@@ -984,7 +1046,7 @@ class AndroidLivePlaybackSpeedControlMessage {
   /// achievable during playback.
   final double minPossibleLiveOffsetSmoothingFactor;
 
-  AndroidLivePlaybackSpeedControlMessage({
+  const AndroidLivePlaybackSpeedControlMessage({
     required this.fallbackMinPlaybackSpeed,
     required this.fallbackMaxPlaybackSpeed,
     required this.minUpdateInterval,
@@ -1008,12 +1070,131 @@ class AndroidLivePlaybackSpeedControlMessage {
       };
 }
 
+class VideoOptions {
+  /// The URI to the video file.
+  final String source;
+
+  /// **Android Only**:
+  /// Wether to use network video caching or not.
+  final bool enableCaching;
+
+  /// **Android Only**:
+  /// Optional Cache Key, useful for dynamic links. key must be unique
+  /// to the video stream, providing non-unique key means playing the wrong video.
+  final String cacheKey;
+
+  /// **Android Only**
+  ///
+  /// Specifying cache directory will toggle proxy caching, use only
+  /// if you want to use the video files after caching.
+  ///
+  /// Providing a null [cacheDirectory] while [enableCaching] is true
+  /// means using default exoplayer caching system, which result can't be used
+  /// outside exoplayer
+  final Directory? cacheDirectory;
+
+  /// **Android Only**:
+  /// Max Cache Size for a single file.
+  ///
+  /// **Only works with exoplayer cache system, i.e. when [cacheDirectory] == null**
+  ///
+  /// defaults to 100 MB.
+  final ByteSize maxSingleFileCacheSize;
+
+  /// **Android Only**:
+  /// Total Cache Size for all files.
+  ///
+  /// defaults to 1 GB.
+  final ByteSize maxTotalCacheSize;
+
+  /// HTTP headers used for the request to the [dataSource].
+  /// Only for [VideoPlayerController.network].
+  /// Always empty for other video types.
+  final Map<String, String> httpHeaders;
+
+  /// **Android only**. Will override the platform's generic file format
+  /// detection with whatever is set here.
+  final VideoFormat? formatHint;
+
+  const VideoOptions({
+    required this.source,
+    required this.enableCaching,
+    required this.cacheKey,
+    required this.cacheDirectory,
+    this.maxSingleFileCacheSize = const ByteSize(mb: 100),
+    this.maxTotalCacheSize = const ByteSize(gb: 1),
+    this.httpHeaders = const {},
+    this.formatHint,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'source': source,
+      'enableCaching': enableCaching,
+      'cacheKey': cacheKey,
+      'cacheDirectory': cacheDirectory?.path,
+      'maxSingleFileCacheSize': maxSingleFileCacheSize.totalBytes,
+      'maxTotalCacheSize': maxTotalCacheSize.totalBytes,
+      'httpHeaders': httpHeaders,
+      'formatHint':
+          formatHint == null ? null : _videoFormatStringMap[formatHint],
+    };
+  }
+}
+
+class ByteSize {
+  final int bytes;
+  final int kb;
+  final int mb;
+  final int gb;
+  final int tb;
+
+  const ByteSize({
+    this.bytes = 0,
+    this.kb = 0,
+    this.mb = 0,
+    this.gb = 0,
+    this.tb = 0,
+  });
+
+  int get totalBytes {
+    int b = 0;
+    b += bytes;
+    b += kb * 1024;
+    b += mb * 1024 * 1024;
+    b += gb * 1024 * 1024 * 1024;
+    b += tb * 1024 * 1024 * 1024 * 1024;
+    return b;
+  }
+}
+
+const Map<VideoFormat, String> _videoFormatStringMap = <VideoFormat, String>{
+  VideoFormat.ss: 'ss',
+  VideoFormat.hls: 'hls',
+  VideoFormat.dash: 'dash',
+  VideoFormat.other: 'other',
+};
+
+enum VideoFormat {
+  /// Dynamic Adaptive Streaming over HTTP, also known as MPEG-DASH.
+  dash,
+
+  /// HTTP Live Streaming.
+  hls,
+
+  /// Smooth Streaming.
+  ss,
+
+  /// Any format other than the other ones defined in this enum.
+  other,
+}
+
 /// Information about an audio source to be communicated with the platform
 /// implementation.
 abstract class AudioSourceMessage {
   final String id;
 
-  AudioSourceMessage({required this.id});
+  const AudioSourceMessage({required this.id});
 
   Map<dynamic, dynamic> toMap();
 }
@@ -1024,7 +1205,8 @@ abstract class IndexedAudioSourceMessage extends AudioSourceMessage {
   /// Since the tag type is unknown, this can only be used by platform
   /// implementations that pass by reference.
   final dynamic tag;
-  IndexedAudioSourceMessage({required String id, this.tag}) : super(id: id);
+  const IndexedAudioSourceMessage({required String id, this.tag})
+      : super(id: id);
 }
 
 /// Information about a URI audio source to be communicated with the platform
@@ -1033,7 +1215,7 @@ abstract class UriAudioSourceMessage extends IndexedAudioSourceMessage {
   final String uri;
   final Map<String, String>? headers;
 
-  UriAudioSourceMessage({
+  const UriAudioSourceMessage({
     required String id,
     required this.uri,
     this.headers,
@@ -1044,7 +1226,7 @@ abstract class UriAudioSourceMessage extends IndexedAudioSourceMessage {
 /// Information about a progressive audio source to be communicated with the
 /// platform implementation.
 class ProgressiveAudioSourceMessage extends UriAudioSourceMessage {
-  ProgressiveAudioSourceMessage({
+  const ProgressiveAudioSourceMessage({
     required String id,
     required String uri,
     Map<String, String>? headers,
@@ -1063,7 +1245,7 @@ class ProgressiveAudioSourceMessage extends UriAudioSourceMessage {
 /// Information about a DASH audio source to be communicated with the platform
 /// implementation.
 class DashAudioSourceMessage extends UriAudioSourceMessage {
-  DashAudioSourceMessage({
+  const DashAudioSourceMessage({
     required String id,
     required String uri,
     Map<String, String>? headers,
@@ -1082,7 +1264,7 @@ class DashAudioSourceMessage extends UriAudioSourceMessage {
 /// Information about a HLS audio source to be communicated with the platform
 /// implementation.
 class HlsAudioSourceMessage extends UriAudioSourceMessage {
-  HlsAudioSourceMessage({
+  const HlsAudioSourceMessage({
     required String id,
     required String uri,
     Map<String, String>? headers,
@@ -1103,7 +1285,7 @@ class HlsAudioSourceMessage extends UriAudioSourceMessage {
 class SilenceAudioSourceMessage extends IndexedAudioSourceMessage {
   final Duration duration;
 
-  SilenceAudioSourceMessage({
+  const SilenceAudioSourceMessage({
     required String id,
     required this.duration,
   }) : super(id: id);
@@ -1123,7 +1305,7 @@ class ConcatenatingAudioSourceMessage extends AudioSourceMessage {
   final bool useLazyPreparation;
   final List<int> shuffleOrder;
 
-  ConcatenatingAudioSourceMessage({
+  const ConcatenatingAudioSourceMessage({
     required String id,
     required this.children,
     required this.useLazyPreparation,
@@ -1147,7 +1329,7 @@ class ClippingAudioSourceMessage extends IndexedAudioSourceMessage {
   final Duration? start;
   final Duration? end;
 
-  ClippingAudioSourceMessage({
+  const ClippingAudioSourceMessage({
     required String id,
     required this.child,
     this.start,
@@ -1171,7 +1353,7 @@ class LoopingAudioSourceMessage extends AudioSourceMessage {
   final AudioSourceMessage child;
   final int count;
 
-  LoopingAudioSourceMessage({
+  const LoopingAudioSourceMessage({
     required String id,
     required this.child,
     required this.count,
@@ -1192,7 +1374,7 @@ class AudioEffectSetEnabledRequest {
   final String type;
   final bool enabled;
 
-  AudioEffectSetEnabledRequest({
+  const AudioEffectSetEnabledRequest({
     required this.type,
     required this.enabled,
   });
@@ -1216,7 +1398,7 @@ class AndroidLoudnessEnhancerSetTargetGainRequest {
   /// The target gain in decibels.
   final double targetGain;
 
-  AndroidLoudnessEnhancerSetTargetGainRequest({
+  const AndroidLoudnessEnhancerSetTargetGainRequest({
     required this.targetGain,
   });
 
@@ -1236,7 +1418,7 @@ class AndroidLoudnessEnhancerSetTargetGainResponse {
 /// Information communicated to the platform implementation when requesting the
 /// equalizer parameters.
 class AndroidEqualizerGetParametersRequest {
-  AndroidEqualizerGetParametersRequest();
+  const AndroidEqualizerGetParametersRequest();
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{};
 }
@@ -1246,7 +1428,7 @@ class AndroidEqualizerGetParametersRequest {
 class AndroidEqualizerGetParametersResponse {
   final AndroidEqualizerParametersMessage parameters;
 
-  AndroidEqualizerGetParametersResponse({required this.parameters});
+  const AndroidEqualizerGetParametersResponse({required this.parameters});
 
   static AndroidEqualizerGetParametersResponse fromMap(
           Map<dynamic, dynamic> map) =>
@@ -1262,7 +1444,7 @@ class AndroidEqualizerBandSetGainRequest {
   final int bandIndex;
   final double gain;
 
-  AndroidEqualizerBandSetGainRequest({
+  const AndroidEqualizerBandSetGainRequest({
     required this.bandIndex,
     required this.gain,
   });
@@ -1288,7 +1470,7 @@ class AndroidEqualizerBandSetGainResponse {
 abstract class AudioEffectMessage {
   final bool enabled;
 
-  AudioEffectMessage({required this.enabled});
+  const AudioEffectMessage({required this.enabled});
 
   Map<dynamic, dynamic> toMap();
 }
@@ -1298,7 +1480,7 @@ abstract class AudioEffectMessage {
 class AndroidLoudnessEnhancerMessage extends AudioEffectMessage {
   final double targetGain;
 
-  AndroidLoudnessEnhancerMessage({
+  const AndroidLoudnessEnhancerMessage({
     required bool enabled,
     required this.targetGain,
   }) : super(enabled: enabled);
@@ -1329,7 +1511,7 @@ class AndroidEqualizerBandMessage {
   /// The gain for this band in decibels.
   final double gain;
 
-  AndroidEqualizerBandMessage({
+  const AndroidEqualizerBandMessage({
     required this.index,
     required this.lowerFrequency,
     required this.upperFrequency,
@@ -1362,7 +1544,7 @@ class AndroidEqualizerParametersMessage {
   final double maxDecibels;
   final List<AndroidEqualizerBandMessage> bands;
 
-  AndroidEqualizerParametersMessage({
+  const AndroidEqualizerParametersMessage({
     required this.minDecibels,
     required this.maxDecibels,
     required this.bands,
@@ -1390,7 +1572,7 @@ class AndroidEqualizerParametersMessage {
 class AndroidEqualizerMessage extends AudioEffectMessage {
   final AndroidEqualizerParametersMessage? parameters;
 
-  AndroidEqualizerMessage({
+  const AndroidEqualizerMessage({
     required bool enabled,
     required this.parameters,
   }) : super(enabled: enabled);

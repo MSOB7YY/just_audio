@@ -2,6 +2,9 @@
 // More advanced examples demonstrating other features can be found in the same
 // directory as this example in the GitHub repository.
 
+import 'dart:developer';
+import 'dart:io';
+
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,34 +21,77 @@ class MyApp extends StatefulWidget {
   MyAppState createState() => MyAppState();
 }
 
-class MyAppState extends State<MyApp> with WidgetsBindingObserver {
+class MyAppState extends State<MyApp> {
   final _player = AudioPlayer();
+  final _player2 = AudioPlayer();
 
   @override
   void initState() {
     super.initState();
-    ambiguate(WidgetsBinding.instance)!.addObserver(this);
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.black,
-    ));
     _init();
+    _init2();
   }
 
   Future<void> _init() async {
     // Inform the operating system of our app's audio attributes etc.
     // We pick a reasonable default for an app that plays speech.
     final session = await AudioSession.instance;
-    await session.configure(const AudioSessionConfiguration.speech());
+    await session.configure(const AudioSessionConfiguration.music());
     // Listen to errors during playback.
     _player.playbackEventStream.listen((event) {},
         onError: (Object e, StackTrace stackTrace) {
       print('A stream error occurred: $e');
     });
+    _player.videoTextureIdStream.listen((event) {
+      print('videoTextureId: $event');
+    }, onError: (Object e, StackTrace stackTrace) {
+      print('A stream error occurred videoTextureId: $e');
+    });
     // Try to load audio from a source and catch any errors.
     try {
       // AAC example: https://dl.espressif.com/dl/audio/ff-16b-2c-44100hz.aac
-      await _player.setAudioSource(AudioSource.uri(Uri.parse(
-          "https://s3.amazonaws.com/scifri-episodes/scifri20181123-episode.mp3")));
+      await _player.setAudioSource(
+        AudioSource.file(
+            '/storage/emulated/0/Music/video test/5UUO_NmnSFc_130422.m4a'),
+        videoOptions: VideoOptions(
+          // source: '/storage/emulated/0/Music/video test/5UUO_NmnSFc_480p.mp4',
+          source:
+              'https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_5mb.mp4',
+          enableCaching: true,
+          cacheKey: 'big_buck_bunny',
+          cacheDirectory: Directory('/storage/emulated/0/Music/'),
+        ),
+      );
+    } catch (e) {
+      print("Error loading audio source: $e");
+    }
+  }
+
+  Future<void> _init2() async {
+    // Inform the operating system of our app's audio attributes etc.
+    // We pick a reasonable default for an app that plays speech.
+    final session = await AudioSession.instance;
+    await session.configure(const AudioSessionConfiguration.music());
+    // Listen to errors during playback.
+    _player2.playbackEventStream.listen((event) {},
+        onError: (Object e, StackTrace stackTrace) {
+      print('A stream error occurred: $e');
+    });
+    _player2.videoTextureIdStream.listen((event) {
+      print('videoTextureId: $event');
+    }, onError: (Object e, StackTrace stackTrace) {
+      print('A stream error occurred videoTextureId: $e');
+    });
+    try {
+      await _player2.setAudioSource(
+        AudioSource.file('/storage/emulated/0/Music/video test/a2.m4a'),
+        videoOptions: const VideoOptions(
+          source: '/storage/emulated/0/Music/video test/v2.mp4',
+          enableCaching: true,
+          cacheKey: 'v2',
+          cacheDirectory: null,
+        ),
+      );
     } catch (e) {
       print("Error loading audio source: $e");
     }
@@ -53,21 +99,9 @@ class MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    ambiguate(WidgetsBinding.instance)!.removeObserver(this);
-    // Release decoders and buffers back to the operating system making them
-    // available for other apps to use.
     _player.dispose();
+    _player2.dispose();
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
-      // Release the player's resources when not in use. We use "stop" so that
-      // if the app resumes later, it will still remember what position to
-      // resume from.
-      _player.stop();
-    }
   }
 
   /// Collects the data useful for displaying in a seek bar, using a handy
@@ -79,35 +113,131 @@ class MyAppState extends State<MyApp> with WidgetsBindingObserver {
           _player.durationStream,
           (position, bufferedPosition, duration) => PositionData(
               position, bufferedPosition, duration ?? Duration.zero));
+  Stream<PositionData> get _positionDataStream2 =>
+      Rx.combineLatest3<Duration, Duration, Duration?, PositionData>(
+          _player2.positionStream,
+          _player2.bufferedPositionStream,
+          _player2.durationStream,
+          (position, bufferedPosition, duration) => PositionData(
+              position, bufferedPosition, duration ?? Duration.zero));
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      themeMode: ThemeMode.dark,
+      darkTheme: ThemeData.dark(),
       debugShowCheckedModeBanner: false,
       home: Scaffold(
         body: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Display play/pause button and volume/speed sliders.
-              ControlButtons(_player),
-              // Display seek bar. Using StreamBuilder, this widget rebuilds
-              // each time the position, buffered position or duration changes.
-              StreamBuilder<PositionData>(
-                stream: _positionDataStream,
-                builder: (context, snapshot) {
-                  final positionData = snapshot.data;
-                  return SeekBar(
-                    duration: positionData?.duration ?? Duration.zero,
-                    position: positionData?.position ?? Duration.zero,
-                    bufferedPosition:
-                        positionData?.bufferedPosition ?? Duration.zero,
-                    onChangeEnd: _player.seek,
-                  );
-                },
-              ),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                StreamBuilder<VideoInfoData>(
+                  stream: _player.videoInfoStream,
+                  builder: (context, snapshot) {
+                    final info = snapshot.data;
+                    // inspect(info);
+                    final id = info?.textureId;
+                    if (info == null || id == null || !info.isInitialized) {
+                      return const Text('no video');
+                    }
+                    final aspectRatio = info.height / info.width;
+                    final ctxWidth = MediaQuery.of(context).size.width;
+                    return SizedBox(
+                      width: ctxWidth,
+                      height: ctxWidth * aspectRatio,
+                      child: Texture(textureId: id),
+                    );
+                  },
+                ),
+                // Display play/pause button and volume/speed sliders.
+                ControlButtons(_player),
+                // Display seek bar. Using StreamBuilder, this widget rebuilds
+                // each time the position, buffered position or duration changes.
+                StreamBuilder<PositionData>(
+                  stream: _positionDataStream,
+                  builder: (context, snapshot) {
+                    final positionData = snapshot.data;
+                    return SeekBar(
+                      duration: positionData?.duration ?? Duration.zero,
+                      position: positionData?.position ?? Duration.zero,
+                      bufferedPosition:
+                          positionData?.bufferedPosition ?? Duration.zero,
+                      onChangeEnd: _player.seek,
+                    );
+                  },
+                ),
+
+                ElevatedButton(
+                  onPressed: () {
+                    _player.setVideo(
+                      const VideoOptions(
+                        source: '/storage/emulated/0/Music/video test/v2.mp4',
+                        enableCaching: true,
+                        cacheKey: 'v2',
+                        cacheDirectory: null,
+                      ),
+                    );
+                  },
+                  child: const Text('set video 1'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    _player.setVideo(
+                      const VideoOptions(
+                        source:
+                            '/storage/emulated/0/Music/video test/5UUO_NmnSFc_480p.mp4',
+                        enableCaching: true,
+                        cacheKey: '5UUO_NmnSFc_480p',
+                        cacheDirectory: null,
+                      ),
+                    );
+                  },
+                  child: const Text('set video 2'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    _player.setVideo(null);
+                  },
+                  child: const Text('set video none'),
+                ),
+                // -- video 2
+                // StreamBuilder<VideoInfoData>(
+                //   stream: _player2.videoInfoStream,
+                //   builder: (context, snapshot) {
+                //     final info = snapshot.data;
+                //     // inspect(info);
+                //     final id = info?.textureId;
+                //     if (info == null || id == null || id == -1) {
+                //       return const Text('no video');
+                //     }
+                //     final aspectRatio = info.height / info.width;
+                //     final ctxWidth = MediaQuery.of(context).size.width;
+                //     return SizedBox(
+                //       width: ctxWidth,
+                //       height: ctxWidth * aspectRatio,
+                //       child: Texture(textureId: id),
+                //     );
+                //   },
+                // ),
+                // ControlButtons(_player2),
+                // StreamBuilder<PositionData>(
+                //   stream: _positionDataStream2,
+                //   builder: (context, snapshot) {
+                //     final positionData = snapshot.data;
+                //     return SeekBar(
+                //       duration: positionData?.duration ?? Duration.zero,
+                //       position: positionData?.position ?? Duration.zero,
+                //       bufferedPosition:
+                //           positionData?.bufferedPosition ?? Duration.zero,
+                //       onChangeEnd: _player2.seek,
+                //     );
+                //   },
+                // ),
+              ],
+            ),
           ),
         ),
       ),
