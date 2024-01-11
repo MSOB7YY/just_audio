@@ -18,7 +18,6 @@ dependencies:
     git:
       url: https://github.com/MSOB7YY/just_audio
       path: just_audio_platform_interface/
-      ref: e37fb4ae8ee63dc67365049c1ae226a57a4d0dd9
   flutter:
     sdk: flutter
   flutter_web_plugins:
