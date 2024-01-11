@@ -2,12 +2,10 @@
 // More advanced examples demonstrating other features can be found in the same
 // directory as this example in the GitHub repository.
 
-import 'dart:developer';
 import 'dart:io';
 
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_example/common.dart';
 import 'package:rxdart/rxdart.dart';
@@ -42,11 +40,7 @@ class MyAppState extends State<MyApp> {
         onError: (Object e, StackTrace stackTrace) {
       print('A stream error occurred: $e');
     });
-    _player.videoTextureIdStream.listen((event) {
-      print('videoTextureId: $event');
-    }, onError: (Object e, StackTrace stackTrace) {
-      print('A stream error occurred videoTextureId: $e');
-    });
+
     // Try to load audio from a source and catch any errors.
     try {
       // AAC example: https://dl.espressif.com/dl/audio/ff-16b-2c-44100hz.aac
@@ -77,11 +71,7 @@ class MyAppState extends State<MyApp> {
         onError: (Object e, StackTrace stackTrace) {
       print('A stream error occurred: $e');
     });
-    _player2.videoTextureIdStream.listen((event) {
-      print('videoTextureId: $event');
-    }, onError: (Object e, StackTrace stackTrace) {
-      print('A stream error occurred videoTextureId: $e');
-    });
+
     try {
       await _player2.setAudioSource(
         AudioSource.file('/storage/emulated/0/Music/video test/a2.m4a'),

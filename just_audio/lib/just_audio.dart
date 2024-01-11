@@ -32,7 +32,7 @@ JustAudioPlatform get _pluginPlatform {
     // shut down existing players on a hot restart. TODO: Remove this hack once
     // https://github.com/flutter/flutter/issues/10437 is implemented.
     try {
-      pluginPlatform.disposeAllPlayers(DisposeAllPlayersRequest());
+      pluginPlatform.disposeAllPlayers(const DisposeAllPlayersRequest());
     } catch (e) {
       // Silently ignore if a platform doesn't support this method.
     }
@@ -131,7 +131,6 @@ class AudioPlayer {
   final _loopModeSubject = BehaviorSubject.seeded(LoopMode.off);
   final _shuffleModeEnabledSubject = BehaviorSubject.seeded(false);
   final _videoInfoSubject = BehaviorSubject<VideoInfoData>();
-  final _videoTextureIdSubject = BehaviorSubject.seeded(-1);
   final _androidAudioSessionIdSubject = BehaviorSubject<int?>();
   final _positionDiscontinuitySubject =
       PublishSubject<PositionDiscontinuity>(sync: true);
@@ -368,8 +367,7 @@ class AudioPlayer {
   /// The currently active video texture id.
   Stream<VideoInfoData> get videoInfoStream => _videoInfoSubject.stream;
 
-  /// The currently active video texture id.
-  Stream<int> get videoTextureIdStream => _videoTextureIdSubject.stream;
+  VideoInfoData? get videoInfo => _videoInfoSubject.nvalue;
 
   /// The latest [PlaybackEvent].
   PlaybackEvent get playbackEvent => _playbackEvent;
@@ -3816,8 +3814,8 @@ class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
       await (await parameters)._restore(platform);
       return;
     }
-    final response = await platform
-        .androidEqualizerGetParameters(AndroidEqualizerGetParametersRequest());
+    final response = await platform.androidEqualizerGetParameters(
+        const AndroidEqualizerGetParametersRequest());
     final receivedParameters =
         AndroidEqualizerParameters._fromMessage(_player!, response.parameters);
     _parametersCompleter.complete(receivedParameters);
