@@ -3465,6 +3465,9 @@ class _IdleAudioPlayer extends AudioPlayerPlatform {
   }
 
   @override
+  Future<void> setVideo(VideoOptions? video) async {}
+
+  @override
   Future<PlayResponse> play(PlayRequest request) async {
     return PlayResponse();
   }

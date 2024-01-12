@@ -828,7 +828,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     this.videoSource = videoSource;
     this.audioSource = audioSource;
 
-    videoEventChannel.success(Map.of("textureId", -1));
+    sendDisposeVideo();
 
     // TODO: pass in initial position here.
     if (videoSource != null) {
@@ -852,7 +852,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   }
 
   private void setVideoOptions(final Map<?, ?> map) {
-    videoEventChannel.success(Map.of("textureId", -1));
+    sendDisposeVideo();
 
     final long position = getCurrentPosition();
 
@@ -876,6 +876,12 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     }
     seekPos = position;
     player.seekTo(position);
+  }
+
+  private void sendDisposeVideo() {
+    Map<String, Integer> event = new HashMap<>();
+    event.put("textureId", -1);
+    videoEventChannel.success(event);
   }
 
   private void sendVideoInfo() {

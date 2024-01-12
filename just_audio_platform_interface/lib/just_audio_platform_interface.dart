@@ -289,6 +289,16 @@ class VideoDataMessage {
 
   bool get isInitialized => textureId != -1;
 
+  double get aspectRatio {
+    if (!isInitialized) return 1.0;
+    if (width == 0 || height == 0) return 1.0;
+
+    final double aspectRatio = width / height;
+    if (aspectRatio <= 0) return 1.0;
+
+    return aspectRatio;
+  }
+
   const VideoDataMessage({
     required this.id,
     required this.textureId,
