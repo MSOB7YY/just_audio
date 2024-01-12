@@ -1,6 +1,7 @@
 package com.ryanheise.just_audio;
 
 import android.content.Context;
+import android.util.Rational;
 import androidx.annotation.NonNull;
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodCall;
@@ -19,7 +20,20 @@ public class MainMethodCallHandler implements MethodCallHandler {
   private final BinaryMessenger messenger;
   private final TextureRegistry textureRegistry;
 
-  private final Map<String, AudioPlayer> players = new HashMap<>();
+  static private final Map<String, AudioPlayer> players = new HashMap<>();
+  static private String latestId;
+
+  static public AudioPlayer latestAudioPlayer() {
+    return latestId == null ? null : players.get(latestId);
+  }
+
+  static public Boolean hasVideo() {
+    return latestAudioPlayer().hasVideo();
+  }
+
+  static public Rational getVideoRational() {
+    return latestAudioPlayer().getVideoRational();
+  }
 
   public MainMethodCallHandler(Context applicationContext, BinaryMessenger messenger, TextureRegistry textureRegistry) {
     this.applicationContext = applicationContext;
@@ -36,10 +50,11 @@ public class MainMethodCallHandler implements MethodCallHandler {
           result.error("Platform player " + id + " already exists", null, null);
           break;
         }
+        latestId = id;
         final List<Object> rawAudioEffects = call.argument("androidAudioEffects");
         final TextureRegistry.SurfaceTextureEntry texture = textureRegistry.createSurfaceTexture();
         players.put(id, new AudioPlayer(applicationContext, messenger, id, call.argument("audioLoadConfiguration"),
-          rawAudioEffects, call.argument("androidOffloadSchedulingEnabled"), texture));
+            rawAudioEffects, call.argument("androidOffloadSchedulingEnabled"), texture));
         result.success(texture.id());
         break;
       }

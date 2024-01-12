@@ -12,6 +12,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Surface;
+import android.util.Rational;
 import com.google.android.exoplayer2.*;
 import com.google.android.exoplayer2.Player.PositionInfo;
 import com.google.android.exoplayer2.audio.*;
@@ -1249,4 +1250,16 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   enum ProcessingState {
     none, loading, buffering, ready, completed
   }
+
+  public Boolean hasVideo() {
+    return videoSource != null;
+  }
+
+  public Rational getVideoRational() {
+    if (!hasVideo())
+      return null;
+    final Format info = player.getVideoFormat();
+    return info == null ? new Rational(1, 1) : new Rational(info.width, info.height);
+  }
+
 }
