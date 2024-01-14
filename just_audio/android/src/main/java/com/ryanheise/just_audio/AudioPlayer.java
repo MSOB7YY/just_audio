@@ -71,6 +71,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private long updatePosition;
   private long updateTime;
   private long bufferedPosition;
+  private long bufferedPositionVideo;
   private Long start;
   private Long end;
   private Long seekPos;
@@ -109,10 +110,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
   private ExoPlayer player;
   private ExoPlayer videoPlayer;
+  private RenderersFactory renderersFactory;
+  private CustomVideoRenderer videoPlayerCustomRenderer;
   private DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory();
   private Integer audioSessionId;
   private MediaSource mediaSource;
-  private MediaSource audioSource;
   private MediaSource videoSource;
   private Integer currentIndex;
   private final Handler handler = new Handler(Looper.getMainLooper());
@@ -122,25 +124,44 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       if (player == null) {
         return;
       }
-
-      long newBufferedPosition = player.getBufferedPosition();
-      if (newBufferedPosition != bufferedPosition) {
-        // This method updates bufferedPosition.
-        broadcastImmediatePlaybackEvent();
-      }
-      switch (player.getPlaybackState()) {
-        case Player.STATE_BUFFERING:
+      if (videoPlayer != null) {
+        long newBufferedPosition = player.getBufferedPosition();
+        long newBufferedPositionVideo = videoPlayer.getBufferedPosition();
+        if (newBufferedPosition != bufferedPosition || newBufferedPositionVideo != bufferedPositionVideo) {
+          // This method updates bufferedPosition.
+          broadcastImmediatePlaybackEvent();
+        }
+        final int stateAudio = player.getPlaybackState();
+        final int stateVideo = videoPlayer.getPlaybackState();
+        if (stateAudio == Player.STATE_BUFFERING || stateVideo == Player.STATE_BUFFERING) {
           handler.postDelayed(this, 200);
-          break;
-        case Player.STATE_READY:
+        } else if (stateAudio == Player.STATE_READY && stateVideo == Player.STATE_READY) {
           if (player.getPlayWhenReady()) {
             handler.postDelayed(this, 500);
           } else {
             handler.postDelayed(this, 1000);
           }
-          break;
-        default:
-          // Stop watching buffer
+        }
+      } else {
+        long newBufferedPosition = player.getBufferedPosition();
+        if (newBufferedPosition != bufferedPosition) {
+          // This method updates bufferedPosition.
+          broadcastImmediatePlaybackEvent();
+        }
+        switch (player.getPlaybackState()) {
+          case Player.STATE_BUFFERING:
+            handler.postDelayed(this, 200);
+            break;
+          case Player.STATE_READY:
+            if (player.getPlayWhenReady()) {
+              handler.postDelayed(this, 500);
+            } else {
+              handler.postDelayed(this, 1000);
+            }
+            break;
+          default:
+            // Stop watching buffer
+        }
       }
     }
   };
@@ -152,6 +173,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     this.rawAudioEffects = rawAudioEffects;
     this.offloadSchedulingEnabled = offloadSchedulingEnabled != null ? offloadSchedulingEnabled : false;
     this.textureEntry = textureEntry;
+    this.surface = new Surface(this.textureEntry.surfaceTexture());
     methodChannel = new MethodChannel(messenger, "com.ryanheise.just_audio.methods." + id);
     methodChannel.setMethodCallHandler(this);
     eventChannel = new BetterEventChannel(messenger, "com.ryanheise.just_audio.events." + id);
@@ -429,6 +451,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   @Override
   public void onMethodCall(final MethodCall call, final Result result) {
     ensurePlayerInitialized();
+    ensureVideoPlayerInitialized();
 
     try {
       switch (call.method) {
@@ -815,9 +838,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       case loading:
         abortExistingConnection();
         player.stop();
+        videoPlayer.stop();
         break;
       default:
         player.stop();
+        videoPlayer.stop();
         break;
     }
     errorCount = 0;
@@ -827,56 +852,48 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     enqueuePlaybackEvent();
     this.videoOptions = videoOptions;
     this.videoSource = videoSource;
-    this.audioSource = audioSource;
 
     sendDisposeVideo();
 
     // TODO: pass in initial position here.
-    if (videoSource != null) {
-      this.mediaSource = new MergingMediaSource(audioSource, videoSource);
-    } else {
-      this.mediaSource = audioSource;
-    }
 
-    setAndPrepareCurrentSource();
+    this.mediaSource = audioSource;
 
-  }
-
-  private void setAndPrepareCurrentSource() {
     player.setMediaSource(this.mediaSource);
     player.prepare();
-    // -- preparing video
-    if (this.videoSource != null) {
-      surface = new Surface(textureEntry.surfaceTexture());
-      player.setVideoSurface(surface);
-    }
+
+    updateVideoSource(); // -- preparing video
+
   }
 
   private void setVideoOptions(final Map<?, ?> map) {
     sendDisposeVideo();
 
-    final long position = getCurrentPosition();
-
     final VideoOptions videoOptions = map == null ? null : VideoOptions.fromMap(map);
     final MediaSource videoSource = getVideoSource(videoOptions);
     this.videoOptions = videoOptions;
     this.videoSource = videoSource;
+    updateVideoSource();
 
-    MediaSource finalSource = null;
-    if (videoSource != null) {
-      finalSource = new MergingMediaSource(this.audioSource, videoSource);
-    } else {
-      // null video, remove if was set before
-      if (this.mediaSource instanceof MergingMediaSource) {
-        finalSource = this.audioSource;
+  }
+
+  private void updateVideoSource() {
+    if (this.videoSource != null) {
+      videoPlayer.setMediaSource(this.videoSource);
+      videoPlayer.seekTo(getCurrentPosition());
+      videoPlayer.prepare();
+      videoPlayer.setVideoSurface(surface);
+      videoPlayer.seekTo(getCurrentPosition());
+      if (player.isPlaying()) {
+        videoPlayer.setPlayWhenReady(true);
       }
+      sendVideoInfo();
+    } else {
+      // videoPlayer.setMediaSource(null);
+      // videoPlayer.setVideoSurface(null);
+      // videoPlayer.release();
+      // videoPlayer = null;
     }
-    if (finalSource != null) {
-      this.mediaSource = finalSource;
-      setAndPrepareCurrentSource();
-    }
-    seekPos = position;
-    player.seekTo(position);
   }
 
   private void sendDisposeVideo() {
@@ -888,7 +905,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private void sendVideoInfo() {
     final Map<String, Object> videoInfoMap = new HashMap<String, Object>();
     videoInfoMap.put("textureId", videoSource == null ? -1 : textureEntry.id());
-    final Format videoInfo = player.getVideoFormat();
+    final Format videoInfo = videoPlayer.getVideoFormat();
     if (videoInfo != null) {
       videoInfoMap.put("id", videoInfo.id);
       videoInfoMap.put("width", videoInfo.width);
@@ -919,7 +936,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       final long paddingSilenceDur = 200_000; // 200 ms
       final short silenceThresholdPCM = 512;
 
-      RenderersFactory renderersFactory = new DefaultRenderersFactory(context) {
+      this.renderersFactory = new DefaultRenderersFactory(context) {
         @Override
         protected AudioSink buildAudioSink(Context context, boolean enableFloatOutput,
             boolean enableAudioTrackPlaybackParams, boolean enableOffload) {
@@ -942,6 +959,29 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       player.experimentalSetOffloadSchedulingEnabled(offloadSchedulingEnabled);
       setAudioSessionId(player.getAudioSessionId());
       player.addListener(this);
+    }
+  }
+
+  private void ensureVideoPlayerInitialized() {
+    if (videoPlayer == null) {
+      ExoPlayer.Builder builder = new ExoPlayer.Builder(context);
+      if (loadControl != null) {
+        builder.setLoadControl(loadControl);
+      }
+      if (livePlaybackSpeedControl != null) {
+        builder.setLivePlaybackSpeedControl(livePlaybackSpeedControl);
+      }
+
+      videoPlayerCustomRenderer = new CustomVideoRenderer(context, player, videoPlayer, renderersFactory);
+
+      builder.setRenderersFactory(videoPlayerCustomRenderer);
+      videoPlayer = builder.build();
+      videoPlayer.setVideoSurface(surface);
+      videoPlayer.experimentalSetOffloadSchedulingEnabled(offloadSchedulingEnabled);
+      // setAudioSessionId(videoPlayer.getAudioSessionId());
+      videoPlayer.setVolume(0);
+      videoPlayer.setRepeatMode(Player.REPEAT_MODE_ONE);
+      videoPlayer.addListener(this);
     }
   }
 
@@ -993,10 +1033,12 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     final Map<String, Object> event = new HashMap<String, Object>();
     Long duration = getDuration() == C.TIME_UNSET ? null : (1000 * getDuration());
     bufferedPosition = player != null ? player.getBufferedPosition() : 0L;
+    bufferedPositionVideo = videoPlayer != null ? videoPlayer.getBufferedPosition() : 0L;
+    final long buff = bufferedPositionVideo == 0 ? bufferedPosition : Math.min(bufferedPosition, bufferedPositionVideo);
     event.put("processingState", processingState.ordinal());
     event.put("updatePosition", 1000 * updatePosition);
     event.put("updateTime", updateTime);
-    event.put("bufferedPosition", 1000 * Math.max(updatePosition, bufferedPosition));
+    event.put("bufferedPosition", 1000 * Math.max(updatePosition, buff));
     event.put("icyMetadata", collectIcyMetadata());
     event.put("duration", duration);
     event.put("currentIndex", currentIndex);
@@ -1106,6 +1148,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       playResult.success(new HashMap<String, Object>());
     }
     playResult = result;
+    videoPlayer.setPlayWhenReady(true);
     player.setPlayWhenReady(true);
     updatePosition();
     if (processingState == ProcessingState.completed && playResult != null) {
@@ -1117,6 +1160,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   public void pause() {
     if (!player.getPlayWhenReady())
       return;
+    videoPlayer.setPlayWhenReady(false);
     player.setPlayWhenReady(false);
     updatePosition();
     if (playResult != null) {
@@ -1133,6 +1177,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     PlaybackParameters params = player.getPlaybackParameters();
     if (params.speed == speed)
       return;
+    videoPlayer.setPlaybackParameters(new PlaybackParameters(speed, params.pitch));
     player.setPlaybackParameters(new PlaybackParameters(speed, params.pitch));
     if (player.getPlayWhenReady())
       updatePosition();
@@ -1143,11 +1188,13 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     PlaybackParameters params = player.getPlaybackParameters();
     if (params.pitch == pitch)
       return;
+    videoPlayer.setPlaybackParameters(new PlaybackParameters(params.speed, pitch));
     player.setPlaybackParameters(new PlaybackParameters(params.speed, pitch));
     enqueuePlaybackEvent();
   }
 
   public void setSkipSilenceEnabled(final boolean enabled) {
+    videoPlayer.setSkipSilenceEnabled(enabled);
     player.setSkipSilenceEnabled(enabled);
   }
 
@@ -1169,6 +1216,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     seekResult = result;
     try {
       int windowIndex = index != null ? index : player.getCurrentMediaItemIndex();
+      videoPlayer.seekTo(windowIndex, position);
       player.seekTo(windowIndex, position);
     } catch (RuntimeException e) {
       seekResult = null;
@@ -1193,6 +1241,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       player.release();
       player = null;
       processingState = ProcessingState.none;
+      broadcastImmediatePlaybackEvent();
+    }
+    if (videoPlayer != null) {
+      videoPlayer.release();
+      videoPlayer = null;
       broadcastImmediatePlaybackEvent();
     }
     eventChannel.endOfStream();
@@ -1251,6 +1304,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     none, loading, buffering, ready, completed
   }
 
+  public Boolean isPlaying() {
+    return player.isPlaying();
+  }
+
   public Boolean hasVideo() {
     return videoSource != null;
   }
@@ -1258,7 +1315,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   public Rational getVideoRational() {
     if (!hasVideo())
       return null;
-    final Format info = player.getVideoFormat();
+    final Format info = videoPlayer.getVideoFormat();
     return info == null ? new Rational(1, 1) : new Rational(info.width, info.height);
   }
 
