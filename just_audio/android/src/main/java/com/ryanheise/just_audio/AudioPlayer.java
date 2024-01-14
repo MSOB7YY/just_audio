@@ -1251,6 +1251,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     none, loading, buffering, ready, completed
   }
 
+  public Boolean isPlaying() {
+    return player.isPlaying();
+  }
+
   public Boolean hasVideo() {
     return videoSource != null;
   }
