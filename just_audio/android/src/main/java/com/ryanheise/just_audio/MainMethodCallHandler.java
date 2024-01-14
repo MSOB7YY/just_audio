@@ -27,6 +27,10 @@ public class MainMethodCallHandler implements MethodCallHandler {
     return latestId == null ? null : players.get(latestId);
   }
 
+  static public Boolean isPlaying() {
+    return latestAudioPlayer().isPlaying();
+  }
+
   static public Boolean hasVideo() {
     return latestAudioPlayer().hasVideo();
   }
@@ -55,7 +59,7 @@ public class MainMethodCallHandler implements MethodCallHandler {
         final TextureRegistry.SurfaceTextureEntry texture = textureRegistry.createSurfaceTexture();
         players.put(id, new AudioPlayer(applicationContext, messenger, id, call.argument("audioLoadConfiguration"),
             rawAudioEffects, call.argument("androidOffloadSchedulingEnabled"), texture));
-        result.success(texture.id());
+        result.success(null);
         break;
       }
       case "disposePlayer": {
@@ -64,12 +68,15 @@ public class MainMethodCallHandler implements MethodCallHandler {
         if (player != null) {
           player.dispose();
           players.remove(id);
+          if (latestId == id)
+            latestId = null;
         }
         result.success(new HashMap<String, Object>());
         break;
       }
       case "disposeAllPlayers": {
         dispose();
+        latestId = null;
         result.success(new HashMap<String, Object>());
         break;
       }
