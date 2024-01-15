@@ -152,6 +152,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     this.rawAudioEffects = rawAudioEffects;
     this.offloadSchedulingEnabled = offloadSchedulingEnabled != null ? offloadSchedulingEnabled : false;
     this.textureEntry = textureEntry;
+    surface = new Surface(textureEntry.surfaceTexture());
     methodChannel = new MethodChannel(messenger, "com.ryanheise.just_audio.methods." + id);
     methodChannel.setMethodCallHandler(this);
     eventChannel = new BetterEventChannel(messenger, "com.ryanheise.just_audio.events." + id);
@@ -838,24 +839,13 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       this.mediaSource = audioSource;
     }
 
-    setAndPrepareCurrentSource();
-
-  }
-
-  private void setAndPrepareCurrentSource() {
     player.setMediaSource(this.mediaSource);
     player.prepare();
-    // -- preparing video
-    if (this.videoSource != null) {
-      surface = new Surface(textureEntry.surfaceTexture());
-      player.setVideoSurface(surface);
-    }
+
   }
 
   private void setVideoOptions(final Map<?, ?> map) {
     sendDisposeVideo();
-
-    final long position = getCurrentPosition();
 
     final VideoOptions videoOptions = map == null ? null : VideoOptions.fromMap(map);
     final MediaSource videoSource = getVideoSource(videoOptions);
@@ -870,13 +860,17 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       if (this.mediaSource instanceof MergingMediaSource) {
         finalSource = this.audioSource;
       }
+      // else {} // video is null && current source is already audio only, do nothing.
     }
+
     if (finalSource != null) {
       this.mediaSource = finalSource;
-      setAndPrepareCurrentSource();
+      final long position = getCurrentPosition();
+      player.setMediaSource(this.mediaSource);
+      seekPos = position;
+      player.seekTo(position);
+      player.prepare();
     }
-    seekPos = position;
-    player.seekTo(position);
   }
 
   private void sendDisposeVideo() {
@@ -941,6 +935,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       player = builder.build();
       player.experimentalSetOffloadSchedulingEnabled(offloadSchedulingEnabled);
       setAudioSessionId(player.getAudioSessionId());
+      player.setVideoSurface(surface);
       player.addListener(this);
     }
   }
