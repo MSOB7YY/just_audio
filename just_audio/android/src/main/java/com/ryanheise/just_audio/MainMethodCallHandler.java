@@ -27,6 +27,10 @@ public class MainMethodCallHandler implements MethodCallHandler {
     return latestId == null ? null : players.get(latestId);
   }
 
+  static public Boolean willPlayWhenReady() {
+    return latestAudioPlayer().willPlayWhenReady();
+  }
+
   static public Boolean isPlaying() {
     return latestAudioPlayer().isPlaying();
   }

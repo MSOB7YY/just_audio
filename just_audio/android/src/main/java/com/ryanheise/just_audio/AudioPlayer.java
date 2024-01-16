@@ -108,7 +108,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private static final String FORMAT_OTHER = "other";
 
   private ExoPlayer player;
-  private ExoPlayer videoPlayer;
+  private ExoPlayer loopingPlayer;
   private DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory();
   private Integer audioSessionId;
   private MediaSource mediaSource;
@@ -336,6 +336,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         processingState = ProcessingState.ready;
         broadcastImmediatePlaybackEvent();
         sendVideoInfo();
+        ppLoopingPlayer(true);
         if (prepareResult != null) {
           Map<String, Object> response = new HashMap<>();
           response.put("duration", getDuration() == C.TIME_UNSET ? null : (1000 * getDuration()));
@@ -351,6 +352,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         }
         break;
       case Player.STATE_BUFFERING:
+        ppLoopingPlayer(false);
         updatePositionIfChanged();
         if (processingState != ProcessingState.buffering && processingState != ProcessingState.loading) {
           processingState = ProcessingState.buffering;
@@ -359,6 +361,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         startWatchingBuffer();
         break;
       case Player.STATE_ENDED:
+        ppLoopingPlayer(false);
         if (processingState != ProcessingState.completed) {
           updatePosition();
           processingState = ProcessingState.completed;
@@ -439,7 +442,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
           final Map<?, ?> videoOptionsMap = call.argument("videoOptions");
           final VideoOptions videoOptions = videoOptionsMap == null ? null : VideoOptions.fromMap(videoOptionsMap);
           load(getAudioSource(call.argument("audioSource")), getVideoSource(videoOptions),
-              initialPosition == null ? C.TIME_UNSET : initialPosition / 1000, initialIndex, videoOptions, result);
+              initialPosition == null ? C.TIME_UNSET : initialPosition / 1000, initialIndex, videoOptions,
+              call.argument("keepOldVideoSource"), result);
           break;
         case "setVideo":
           setVideoOptions(call.argument("video"));
@@ -695,10 +699,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   }
 
   private static boolean isHTTP(Uri uri) {
-    if (uri == null || uri.getScheme() == null) {
+    if (uri == null)
       return false;
-    }
-    String scheme = uri.getScheme();
+    final String scheme = uri.getScheme();
+    if (scheme == null)
+      return false;
     return scheme.equals("http") || scheme.equals("https");
   }
 
@@ -805,7 +810,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   }
 
   private void load(final MediaSource audioSource, final MediaSource videoSource, final long initialPosition,
-      final Integer initialIndex, VideoOptions videoOptions, final Result result) {
+      final Integer initialIndex, VideoOptions videoOptions, Boolean keepOldVideoSource, final Result result) {
     this.initialPos = initialPosition;
     this.initialIndex = initialIndex;
     this.videoOptions = videoOptions;
@@ -826,22 +831,25 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     updatePosition();
     processingState = ProcessingState.loading;
     enqueuePlaybackEvent();
-    this.videoOptions = videoOptions;
-    this.videoSource = videoSource;
     this.audioSource = audioSource;
 
-    sendDisposeVideo();
+    // always update video source, unless specified.
+    if (keepOldVideoSource == null || !keepOldVideoSource) {
+      this.videoOptions = videoOptions;
+      this.videoSource = videoSource;
+      sendDisposeVideo();
+    }
 
     // TODO: pass in initial position here.
-    if (videoSource != null) {
+    if (this.videoSource != null) {
       this.mediaSource = new MergingMediaSource(audioSource, videoSource);
     } else {
       this.mediaSource = audioSource;
     }
 
     player.setMediaSource(this.mediaSource);
+    player.setVideoSurface(surface);
     player.prepare();
-
   }
 
   private void setVideoOptions(final Map<?, ?> map) {
@@ -852,28 +860,81 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     this.videoOptions = videoOptions;
     this.videoSource = videoSource;
 
-    MediaSource finalSource = null;
-    if (videoSource != null) {
-      finalSource = new MergingMediaSource(this.audioSource, videoSource);
+    final Boolean silentVideoDisposal = false;
+
+    if (videoOptions.loop) {
+      updateLoopingPlayer();
     } else {
-      // null video, remove if was set before
-      if (this.mediaSource instanceof MergingMediaSource) {
-        finalSource = this.audioSource;
+      disposeLoopingPlayer();
+      MediaSource finalSource = null;
+      if (videoSource != null) {
+        finalSource = new MergingMediaSource(this.audioSource, videoSource);
+      } else {
+        // null video, remove if was set before
+        if (this.mediaSource instanceof MergingMediaSource) {
+          if (silentVideoDisposal) {
+            sendDisposeVideo();
+          } else {
+            finalSource = this.audioSource;
+          }
+        }
+        // else {} // video is null && current source is already audio only, do nothing.
       }
-      // else {} // video is null && current source is already audio only, do nothing.
+
+      if (finalSource != null) {
+        this.mediaSource = finalSource;
+        long pos = player.getCurrentPosition();
+        if (pos < 0)
+          pos = 0;
+        player.setMediaSource(this.mediaSource);
+        seekPos = pos;
+        player.seekTo(pos);
+        player.setVideoSurface(surface);
+        player.prepare();
+      }
     }
 
-    if (finalSource != null) {
-      this.mediaSource = finalSource;
-      final long position = getCurrentPosition();
-      player.setMediaSource(this.mediaSource);
-      seekPos = position;
-      player.seekTo(position);
-      player.prepare();
+  }
+
+  private void updateLoopingPlayer() {
+    if (this.videoSource != null) {
+      if (loopingPlayer == null) {
+        // -- ensure initialized
+        ExoPlayer.Builder builder = new ExoPlayer.Builder(context);
+        if (loadControl != null) {
+          builder.setLoadControl(loadControl);
+        }
+        loopingPlayer = builder.build();
+        loopingPlayer.experimentalSetOffloadSchedulingEnabled(offloadSchedulingEnabled);
+        loopingPlayer.setVideoSurface(surface);
+      }
+      loopingPlayer.setMediaSource(this.videoSource);
+      loopingPlayer.prepare();
+      loopingPlayer.setVolume(0);
+      loopingPlayer.setRepeatMode(Player.REPEAT_MODE_ONE);
+      loopingPlayer.addListener(new Player.Listener() {
+        @Override
+        public void onPlaybackStateChanged(int state) {
+          if (state == Player.STATE_READY) {
+            sendVideoInfo();
+          }
+        }
+      });
+    } else {
+      disposeLoopingPlayer();
+    }
+  }
+
+  private void disposeLoopingPlayer() {
+    if (loopingPlayer != null) {
+      loopingPlayer.clearVideoSurface();
+      loopingPlayer.release();
+      loopingPlayer = null;
     }
   }
 
   private void sendDisposeVideo() {
+    player.clearVideoSurface();
     Map<String, Integer> event = new HashMap<>();
     event.put("textureId", -1);
     videoEventChannel.success(event);
@@ -882,7 +943,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private void sendVideoInfo() {
     final Map<String, Object> videoInfoMap = new HashMap<String, Object>();
     videoInfoMap.put("textureId", videoSource == null ? -1 : textureEntry.id());
-    final Format videoInfo = player.getVideoFormat();
+    final Format videoInfo = (loopingPlayer != null ? loopingPlayer : player).getVideoFormat();
     if (videoInfo != null) {
       videoInfoMap.put("id", videoInfo.id);
       videoInfoMap.put("width", videoInfo.width);
@@ -935,7 +996,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       player = builder.build();
       player.experimentalSetOffloadSchedulingEnabled(offloadSchedulingEnabled);
       setAudioSessionId(player.getAudioSessionId());
-      player.setVideoSurface(surface);
+      // player.setVideoSurface(surface);
       player.addListener(this);
     }
   }
@@ -1092,6 +1153,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     return filename.replaceAll("^.*\\.", "").toLowerCase();
   }
 
+  public void ppLoopingPlayer(Boolean playWhenReady) {
+    if (loopingPlayer != null)
+      loopingPlayer.setPlayWhenReady(playWhenReady);
+  }
+
   public void play(Result result) {
     if (player.getPlayWhenReady()) {
       result.success(new HashMap<String, Object>());
@@ -1102,6 +1168,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     }
     playResult = result;
     player.setPlayWhenReady(true);
+    ppLoopingPlayer(true);
     updatePosition();
     if (processingState == ProcessingState.completed && playResult != null) {
       playResult.success(new HashMap<String, Object>());
@@ -1113,6 +1180,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     if (!player.getPlayWhenReady())
       return;
     player.setPlayWhenReady(false);
+    ppLoopingPlayer(false);
     updatePosition();
     if (playResult != null) {
       playResult.success(new HashMap<String, Object>());
@@ -1246,6 +1314,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     none, loading, buffering, ready, completed
   }
 
+  public Boolean willPlayWhenReady() {
+    return player.getPlayWhenReady();
+  }
+
   public Boolean isPlaying() {
     return player.isPlaying();
   }
@@ -1257,7 +1329,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   public Rational getVideoRational() {
     if (!hasVideo())
       return null;
-    final Format info = player.getVideoFormat();
+    final Format info = (loopingPlayer != null ? loopingPlayer : player).getVideoFormat();
     return info == null ? new Rational(1, 1) : new Rational(info.width, info.height);
   }
 

@@ -521,12 +521,14 @@ class LoadRequest {
   final Duration? initialPosition;
   final int? initialIndex;
   final VideoOptions? videoOptions;
+  final bool keepOldVideoSource;
 
   const LoadRequest({
     required this.audioSourceMessage,
     this.initialPosition,
     this.initialIndex,
     this.videoOptions,
+    this.keepOldVideoSource = false,
   });
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
@@ -534,6 +536,7 @@ class LoadRequest {
         'initialPosition': initialPosition?.inMicroseconds,
         'initialIndex': initialIndex,
         'videoOptions': videoOptions?.toMap(),
+        'keepOldVideoSource': keepOldVideoSource,
       };
 }
 
@@ -1085,6 +1088,10 @@ class VideoOptions {
   final String source;
 
   /// **Android Only**:
+  ///  The video provided is meant to be a short animation, a/v sync is NOT guranteed.
+  final bool loopingAnimation;
+
+  /// **Android Only**:
   /// Wether to use network video caching or not.
   final bool enableCaching;
 
@@ -1128,6 +1135,7 @@ class VideoOptions {
 
   const VideoOptions({
     required this.source,
+    this.loopingAnimation = false,
     required this.enableCaching,
     required this.cacheKey,
     required this.cacheDirectory,
@@ -1140,6 +1148,7 @@ class VideoOptions {
   Map<String, dynamic> toMap() {
     return {
       'source': source,
+      'loop': loopingAnimation,
       'enableCaching': enableCaching,
       'cacheKey': cacheKey,
       'cacheDirectory': cacheDirectory?.path,

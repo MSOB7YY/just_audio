@@ -105,6 +105,7 @@ class AudioPlayer {
   final _proxy = _ProxyHttpServer();
   AudioSource? _audioSource;
   VideoOptions? _videoOptions;
+  bool _keepOldVideoSource = false;
   final Map<String, AudioSource> _audioSources = {};
   bool _disposed = false;
   _InitialSeekValues? _initialSeekValues;
@@ -758,6 +759,7 @@ class AudioPlayer {
     int? initialIndex,
     Duration? initialPosition,
     VideoOptions? videoOptions,
+    bool keepOldVideoSource = false,
   }) async {
     if (_disposed) return null;
     _audioSource = null;
@@ -768,6 +770,7 @@ class AudioPlayer {
         updatePosition: initialPosition ?? Duration.zero));
     _audioSource = source;
     _videoOptions = videoOptions;
+    _keepOldVideoSource = keepOldVideoSource;
     _broadcastSequence();
     Duration? duration;
     if (playing) preload = true;
@@ -802,6 +805,7 @@ class AudioPlayer {
         _audioSource!,
         initialSeekValues: initialSeekValues,
         videoOptions: _videoOptions,
+        keepOldVideoSource: _keepOldVideoSource,
       );
     } else {
       // This will implicitly load the current audio source.
@@ -810,7 +814,7 @@ class AudioPlayer {
   }
 
   /// Set a video source, use null to disable video.
-  /// This doesn't affect [setAudioSource]
+  /// This doesn't affect [setAudioSource].
   Future<void> setVideo(VideoOptions? video) async {
     return await (await _platform).setVideo(video);
   }
@@ -846,6 +850,7 @@ class AudioPlayer {
     AudioSource source, {
     _InitialSeekValues? initialSeekValues,
     required VideoOptions? videoOptions,
+    required bool keepOldVideoSource,
   }) async {
     final activationNumber = _activationCount;
     void checkInterruption() {
@@ -865,6 +870,7 @@ class AudioPlayer {
         initialPosition: initialSeekValues?.position,
         initialIndex: initialSeekValues?.index,
         videoOptions: videoOptions,
+        keepOldVideoSource: keepOldVideoSource,
       ));
       final duration = response.duration;
 
@@ -910,6 +916,7 @@ class AudioPlayer {
               end: end,
             ),
       videoOptions: _videoOptions,
+      keepOldVideoSource: _keepOldVideoSource,
     );
     return duration;
   }
@@ -1476,7 +1483,8 @@ class AudioPlayer {
           _initialSeekValues = null;
           final duration = await _load(platform, _audioSource!,
               initialSeekValues: initialSeekValues,
-              videoOptions: _videoOptions);
+              videoOptions: _videoOptions,
+              keepOldVideoSource: _keepOldVideoSource);
           if (checkInterruption()) return platform;
           durationCompleter.complete(duration);
         } catch (e, stackTrace) {
