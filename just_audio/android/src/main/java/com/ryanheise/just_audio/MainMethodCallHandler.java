@@ -28,19 +28,23 @@ public class MainMethodCallHandler implements MethodCallHandler {
   }
 
   static public Boolean willPlayWhenReady() {
-    return latestAudioPlayer().willPlayWhenReady();
+    final AudioPlayer pl = latestAudioPlayer();
+    return pl == null ? false : pl.willPlayWhenReady();
   }
 
   static public Boolean isPlaying() {
-    return latestAudioPlayer().isPlaying();
+    final AudioPlayer pl = latestAudioPlayer();
+    return pl == null ? false : pl.isPlaying();
   }
 
   static public Boolean hasVideo() {
-    return latestAudioPlayer().hasVideo();
+    final AudioPlayer pl = latestAudioPlayer();
+    return pl == null ? false : pl.hasVideo();
   }
 
   static public Rational getVideoRational() {
-    return latestAudioPlayer().getVideoRational();
+    final AudioPlayer pl = latestAudioPlayer();
+    return pl == null ? null : pl.getVideoRational();
   }
 
   public MainMethodCallHandler(Context applicationContext, BinaryMessenger messenger, TextureRegistry textureRegistry) {
