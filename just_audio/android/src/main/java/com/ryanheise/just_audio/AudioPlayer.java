@@ -68,6 +68,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private final BetterEventChannel dataEventChannel;
 
   private ProcessingState processingState;
+  private boolean handledVideoError;
   private long updatePosition;
   private long updateTime;
   private long bufferedPosition;
@@ -388,6 +389,15 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   public void onPlayerError(PlaybackException error) {
     if (error instanceof ExoPlaybackException) {
       final ExoPlaybackException exoError = (ExoPlaybackException) error;
+      if (handledVideoError == false && this.mediaSource instanceof MergingMediaSource) {
+        handledVideoError = true;
+        this.videoSource = null;
+        this.videoOptions = null;
+        this.mediaSource = this.audioSource;
+        player.setMediaSource(this.mediaSource);
+        player.prepare();
+        return;
+      }
       switch (exoError.type) {
         case ExoPlaybackException.TYPE_SOURCE:
           Log.e(TAG, "TYPE_SOURCE: " + exoError.getSourceException().getMessage());
@@ -814,6 +824,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     this.initialPos = initialPosition;
     this.initialIndex = initialIndex;
     this.videoOptions = videoOptions;
+    this.handledVideoError = false;
     currentIndex = initialIndex != null ? initialIndex : 0;
     switch (processingState) {
       case none:
