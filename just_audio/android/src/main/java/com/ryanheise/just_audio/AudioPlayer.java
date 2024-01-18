@@ -394,7 +394,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         this.videoSource = null;
         this.videoOptions = null;
         this.mediaSource = this.audioSource;
+        long pos = player.getCurrentPosition();
+        if (pos < 0)
+          pos = 0;
         player.setMediaSource(this.mediaSource);
+        player.seekTo(pos);
         player.prepare();
         return;
       }
@@ -898,7 +902,6 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         if (pos < 0)
           pos = 0;
         player.setMediaSource(this.mediaSource);
-        seekPos = pos;
         player.seekTo(pos);
         player.setVideoSurface(surface);
         player.prepare();
