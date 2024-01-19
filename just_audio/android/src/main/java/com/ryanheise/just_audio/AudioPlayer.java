@@ -877,7 +877,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
     final Boolean silentVideoDisposal = false;
 
-    if (videoOptions.loop) {
+    if (videoOptions != null && videoOptions.loop) {
       updateLoopingPlayer();
     } else {
       disposeLoopingPlayer();
