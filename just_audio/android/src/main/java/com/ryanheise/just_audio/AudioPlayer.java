@@ -864,7 +864,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     }
 
     player.setMediaSource(this.mediaSource);
-    player.setVideoSurface(surface);
+    // player.setVideoSurface(surface);
     player.prepare();
   }
 
@@ -904,7 +904,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
           pos = 0;
         player.setMediaSource(this.mediaSource);
         player.seekTo(pos);
-        player.setVideoSurface(surface);
+        // player.setVideoSurface(surface);
         player.prepare();
       }
     }
@@ -949,7 +949,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   }
 
   private void sendDisposeVideo() {
-    player.clearVideoSurface();
+    // player.clearVideoSurface();
     Map<String, Integer> event = new HashMap<>();
     event.put("textureId", -1);
     videoEventChannel.success(event);
@@ -1011,7 +1011,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       player = builder.build();
       player.experimentalSetOffloadSchedulingEnabled(offloadSchedulingEnabled);
       setAudioSessionId(player.getAudioSessionId());
-      // player.setVideoSurface(surface);
+      player.setVideoSurface(surface);
       player.addListener(this);
     }
   }
