@@ -461,6 +461,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
           break;
         case "setVideo":
           setVideoOptions(call.argument("video"));
+          result.success(new HashMap<String, Object>());
           break;
         case "play":
           play(result);
