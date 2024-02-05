@@ -950,7 +950,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
   private void sendDisposeVideo() {
     // player.clearVideoSurface();
-    Map<String, Integer> event = new HashMap<>();
+    final Map<String, Integer> event = new HashMap<>();
     event.put("textureId", -1);
     videoEventChannel.success(event);
   }
@@ -1277,6 +1277,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     dataEventChannel.endOfStream();
 
     // -- video
+    sendDisposeVideo();
     videoEventChannel.endOfStream();
     textureEntry.release();
     if (surface != null) {
