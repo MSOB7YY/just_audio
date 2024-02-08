@@ -314,6 +314,23 @@ class VideoDataMessage {
     required this.language,
   });
 
+  factory VideoDataMessage.dummy() {
+    return const VideoDataMessage(
+      id: '',
+      textureId: -1,
+      width: -1,
+      height: -1,
+      frameRate: -1,
+      bitrate: -1,
+      sampleRate: -1,
+      encoderDelay: -1,
+      rotationDegrees: -1,
+      containerMimeType: '',
+      label: '',
+      language: '',
+    );
+  }
+
   static VideoDataMessage fromMap(Map<dynamic, dynamic> map) {
     return VideoDataMessage(
       id: map["id"] as String? ?? '',

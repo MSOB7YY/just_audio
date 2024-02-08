@@ -1277,7 +1277,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     dataEventChannel.endOfStream();
 
     // -- video
-    sendDisposeVideo();
+    // sendDisposeVideo();
     videoEventChannel.endOfStream();
     textureEntry.release();
     if (surface != null) {

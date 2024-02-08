@@ -1510,6 +1510,7 @@ class AudioPlayer {
     } else {
       _nativePlatform = null;
       try {
+        _videoInfoSubject.add(VideoDataMessage.dummy());
         await _pluginPlatform.disposePlayer(DisposePlayerRequest(id: _id));
       } catch (e) {
         // Fallback if disposePlayer hasn't been implemented.
