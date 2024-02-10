@@ -3645,7 +3645,7 @@ abstract class AudioEffect {
 
   /// Called when an [AudioEffect] is attached to an [AudioPlayer].
   void _setup(AudioPlayer player) {
-    assert(_player == null);
+    // assert(_player == null);
     _player = player;
   }
 
