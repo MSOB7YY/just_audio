@@ -829,7 +829,6 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     this.initialPos = initialPosition;
     this.initialIndex = initialIndex;
     this.videoOptions = videoOptions;
-    this.handledVideoError = false;
     currentIndex = initialIndex != null ? initialIndex : 0;
     switch (processingState) {
       case none:
@@ -853,6 +852,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     if (keepOldVideoSource == null || !keepOldVideoSource) {
       this.videoOptions = videoOptions;
       this.videoSource = videoSource;
+      this.handledVideoError = false;
       sendDisposeVideo();
     }
 
@@ -875,6 +875,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     final MediaSource videoSource = getVideoSource(videoOptions);
     this.videoOptions = videoOptions;
     this.videoSource = videoSource;
+    this.handledVideoError = false;
 
     final Boolean silentVideoDisposal = false;
 
