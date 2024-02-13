@@ -91,6 +91,21 @@ abstract class AudioPlayerPlatform {
     throw UnimplementedError("setVideo() has not been implemented.");
   }
 
+  /// Retrieves the currently active preset.
+  Future<int?> getCurrentPreset() async {
+    throw UnimplementedError("getCurrentPreset() has not been implemented.");
+  }
+
+  /// Retrieves a list of supported equalizer presets.
+  Future<List<String>> getEqualizerPresets() async {
+    throw UnimplementedError("getEqualizerPresets() has not been implemented.");
+  }
+
+  /// Sets a preset using the index retrieved in [getEqualizerPresets].
+  Future<int?> setEqualizerPreset(int index) async {
+    throw UnimplementedError("setEqualizerPreset() has not been implemented.");
+  }
+
   /// Plays the current audio source at the current index and position.
   Future<PlayResponse> play(PlayRequest request) {
     throw UnimplementedError("play() has not been implemented.");

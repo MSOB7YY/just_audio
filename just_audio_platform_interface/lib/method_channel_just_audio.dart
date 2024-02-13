@@ -72,6 +72,22 @@ class MethodChannelAudioPlayer extends AudioPlayerPlatform {
   }
 
   @override
+  Future<int?> getCurrentPreset() async {
+    return await _channel.invokeMethod<int?>('getCurrentPreset');
+  }
+
+  @override
+  Future<List<String>> getEqualizerPresets() async {
+    return await _channel.invokeListMethod<String>('getEqualizerPresets') ?? [];
+  }
+
+  @override
+  Future<int?> setEqualizerPreset(int index) async {
+    return await _channel
+        .invokeMethod<int?>('setEqualizerPreset', {'index': index});
+  }
+
+  @override
   Future<PlayResponse> play(PlayRequest request) async {
     return PlayResponse.fromMap((await _channel
         .invokeMethod<Map<dynamic, dynamic>>('play', request.toMap()))!);

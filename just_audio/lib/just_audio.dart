@@ -3813,29 +3813,68 @@ class AndroidEqualizerParameters {
 /// An [AudioEffect] for Android that can adjust the gain for different
 /// frequency bands of an [AudioPlayer]'s audio signal.
 class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
-  final Completer<AndroidEqualizerParameters> _parametersCompleter =
-      Completer<AndroidEqualizerParameters>();
+  final parametersStream = BehaviorSubject<AndroidEqualizerParameters>();
+
+  final Completer<List<String>> _presetsCompleter = Completer<List<String>>();
 
   @override
   String get _type => 'AndroidEqualizer';
 
+  AudioPlayerPlatform? _platform;
+  final _platformCompleter = Completer<void>();
+
   @override
   Future<void> _activate(AudioPlayerPlatform platform) async {
+    _platform = platform;
+    if (!_platformCompleter.isCompleted) _platformCompleter.complete();
     await super._activate(platform);
-    if (_parametersCompleter.isCompleted) {
+    if (parametersStream.hasValue) {
       await (await parameters)._restore(platform);
       return;
     }
+    await _fillParameters(platform, _player!);
+
+    if (!_presetsCompleter.isCompleted) {
+      platform
+          .getEqualizerPresets()
+          .then((value) => _presetsCompleter.complete(value))
+          .catchError((_) {});
+    }
+  }
+
+  Future<void> _fillParameters(
+      AudioPlayerPlatform platform, AudioPlayer player) async {
     final response = await platform.androidEqualizerGetParameters(
         const AndroidEqualizerGetParametersRequest());
     final receivedParameters =
-        AndroidEqualizerParameters._fromMessage(_player!, response.parameters);
-    _parametersCompleter.complete(receivedParameters);
+        AndroidEqualizerParameters._fromMessage(player, response.parameters);
+    parametersStream.add(receivedParameters);
   }
 
   /// The parameter values of this equalizer.
-  Future<AndroidEqualizerParameters> get parameters =>
-      _parametersCompleter.future;
+  Future<AndroidEqualizerParameters> get parameters async {
+    await parametersStream.first;
+    return parametersStream.value;
+  }
+
+  Future<List<String>> get presets => _presetsCompleter.future;
+
+  Future<int?> setPreset(int index) async {
+    await _platformCompleter.future;
+    final newPreset = await _platform?.setEqualizerPreset(index);
+    if (newPreset == null) return null;
+
+    if (_platform != null && _player != null) {
+      await _fillParameters(_platform!, _player!);
+    }
+
+    return newPreset;
+  }
+
+  Future<int?> getCurrentPreset() async {
+    await _platformCompleter.future;
+    return _platform?.getCurrentPreset();
+  }
 
   @override
   AudioEffectMessage _toMessage() => AndroidEqualizerMessage(

@@ -546,6 +546,15 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
           equalizerBandSetGain(call.argument("bandIndex"), call.argument("gain"));
           result.success(new HashMap<String, Object>());
           break;
+        case "getCurrentPreset":
+          result.success(getCurrentPreset());
+          break;
+        case "getEqualizerPresets":
+          result.success(getPresets());
+          break;
+        case "setEqualizerPreset":
+          result.success(setPreset(call.argument("index")));
+          break;
         default:
           result.notImplemented();
           break;
@@ -1058,6 +1067,36 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private void equalizerBandSetGain(int bandIndex, double gain) {
     ((Equalizer) audioEffectsMap.get("AndroidEqualizer")).setBandLevel((short) bandIndex,
         (short) (Math.round(gain * 1000.0)));
+  }
+
+  private Short getCurrentPreset() {
+    try {
+      final Equalizer equalizer = (Equalizer) audioEffectsMap.get("AndroidEqualizer");
+      return equalizer.getCurrentPreset();
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
+  private List<String> getPresets() {
+    final Equalizer equalizer = (Equalizer) audioEffectsMap.get("AndroidEqualizer");
+    final List<String> presets = new ArrayList<>();
+
+    final short numPresets = equalizer.getNumberOfPresets();
+    for (short i = 0; i < numPresets; i++) {
+      presets.add(equalizer.getPresetName(i));
+    }
+    return presets;
+  }
+
+  private Short setPreset(Integer presetIndex) {
+    try {
+      final Equalizer equalizer = (Equalizer) audioEffectsMap.get("AndroidEqualizer");
+      equalizer.usePreset(presetIndex.shortValue());
+      return equalizer.getCurrentPreset();
+    } catch (Exception e) {
+      return null;
+    }
   }
 
   /// Creates an event based on the current state.
