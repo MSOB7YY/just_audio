@@ -1466,7 +1466,9 @@ class AudioPlayer {
                 : ShuffleModeMessage.none));
         if (checkInterruption()) return platform;
         for (var audioEffect in _audioPipeline._audioEffects) {
-          await audioEffect._activate(platform);
+          try {
+            await audioEffect._activate(platform);
+          } catch (_) {}
           if (checkInterruption()) return platform;
         }
         if (playing) {
@@ -3827,11 +3829,18 @@ class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
   Future<void> _activate(AudioPlayerPlatform platform) async {
     _platform = platform;
     if (!_platformCompleter.isCompleted) _platformCompleter.complete();
-    await super._activate(platform);
-    if (parametersStream.hasValue) {
-      await (await parameters)._restore(platform);
-      return;
+    try {
+      await super._activate(platform);
+      if (parametersStream.hasValue) {
+        await (await parameters)._restore(platform);
+        return;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('EQUALIZER: Error activating platform: $e');
+      }
     }
+
     await _fillParameters(platform, _player!);
 
     if (!_presetsCompleter.isCompleted) {
@@ -3844,11 +3853,17 @@ class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
 
   Future<void> _fillParameters(
       AudioPlayerPlatform platform, AudioPlayer player) async {
-    final response = await platform.androidEqualizerGetParameters(
-        const AndroidEqualizerGetParametersRequest());
-    final receivedParameters =
-        AndroidEqualizerParameters._fromMessage(player, response.parameters);
-    parametersStream.add(receivedParameters);
+    try {
+      final response = await platform.androidEqualizerGetParameters(
+          const AndroidEqualizerGetParametersRequest());
+      final receivedParameters =
+          AndroidEqualizerParameters._fromMessage(player, response.parameters);
+      parametersStream.add(receivedParameters);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('EQUALIZER: Error setting equalizer parameters: $e');
+      }
+    }
   }
 
   /// The parameter values of this equalizer.
@@ -3860,8 +3875,15 @@ class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
   Future<List<String>> get presets => _presetsCompleter.future;
 
   Future<int?> setPreset(int index) async {
-    await _platformCompleter.future;
-    final newPreset = await _platform?.setEqualizerPreset(index);
+    int? newPreset;
+    try {
+      await _platformCompleter.future;
+      newPreset = await _platform?.setEqualizerPreset(index);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('EQUALIZER: Error setting equalizer preset: $e');
+      }
+    }
     if (newPreset == null) return null;
 
     if (_platform != null && _player != null) {
