@@ -3816,6 +3816,7 @@ class AndroidEqualizerParameters {
 /// frequency bands of an [AudioPlayer]'s audio signal.
 class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
   final parametersStream = BehaviorSubject<AndroidEqualizerParameters>();
+  int? _presetIndex;
 
   final Completer<List<String>> _presetsCompleter = Completer<List<String>>();
 
@@ -3833,6 +3834,7 @@ class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
       await super._activate(platform);
       if (parametersStream.hasValue) {
         await (await parameters)._restore(platform);
+        if (_presetIndex != null) await setPreset(_presetIndex!);
         return;
       }
     } catch (e) {
@@ -3842,6 +3844,7 @@ class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
     }
 
     await _fillParameters(platform, _player!);
+    if (_presetIndex != null) await setPreset(_presetIndex!);
 
     if (!_presetsCompleter.isCompleted) {
       platform
@@ -3874,7 +3877,9 @@ class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
 
   Future<List<String>> get presets => _presetsCompleter.future;
 
-  Future<int?> setPreset(int index) async {
+  Future<int?> setPreset(int? index) async {
+    _presetIndex = index;
+    if (index == null) return null;
     int? newPreset;
     try {
       await _platformCompleter.future;
