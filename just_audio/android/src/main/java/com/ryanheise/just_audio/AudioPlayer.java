@@ -967,8 +967,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
   private void sendVideoInfo() {
     final Map<String, Object> videoInfoMap = new HashMap<String, Object>();
-    videoInfoMap.put("textureId", videoSource == null ? -1 : textureEntry.id());
     final Format videoInfo = (loopingPlayer != null ? loopingPlayer : player).getVideoFormat();
+    videoInfoMap.put("textureId", videoSource == null || videoInfo == null ? -1 : textureEntry.id());
     if (videoInfo != null) {
       videoInfoMap.put("id", videoInfo.id);
       videoInfoMap.put("width", videoInfo.width);
