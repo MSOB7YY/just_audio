@@ -99,6 +99,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private final TextureRegistry.SurfaceTextureEntry textureEntry;
   private Surface surface;
   private VideoOptions videoOptions;
+  private Boolean videoOnly;
 
   private DefaultHttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory();
 
@@ -455,7 +456,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
           final Integer initialIndex = call.argument("initialIndex");
           final Map<?, ?> videoOptionsMap = call.argument("videoOptions");
           final VideoOptions videoOptions = videoOptionsMap == null ? null : VideoOptions.fromMap(videoOptionsMap);
-          load(getAudioSource(call.argument("audioSource")), getVideoSource(videoOptions),
+          load(getAudioSource(call.argument("audioSource")), getVideoSource(videoOptions), call.argument("videoOnly"),
               initialPosition == null ? C.TIME_UNSET : initialPosition / 1000, initialIndex, videoOptions,
               call.argument("keepOldVideoSource"), result);
           break;
@@ -833,11 +834,13 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     return new DefaultDataSource.Factory(context, httpDataSourceFactory);
   }
 
-  private void load(final MediaSource audioSource, final MediaSource videoSource, final long initialPosition,
+  private void load(final MediaSource audioSource, final MediaSource videoSource, final Boolean videoOnly,
+      final long initialPosition,
       final Integer initialIndex, VideoOptions videoOptions, Boolean keepOldVideoSource, final Result result) {
     this.initialPos = initialPosition;
     this.initialIndex = initialIndex;
     this.videoOptions = videoOptions;
+    this.videoOnly = videoOnly == null ? false : videoOnly;
     currentIndex = initialIndex != null ? initialIndex : 0;
     switch (processingState) {
       case none:
@@ -867,7 +870,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
     // TODO: pass in initial position here.
     if (this.videoSource != null) {
-      this.mediaSource = new MergingMediaSource(audioSource, videoSource);
+      if (this.videoOnly) {
+        this.mediaSource = videoSource;
+      } else {
+        this.mediaSource = new MergingMediaSource(audioSource, videoSource);
+      }
     } else {
       this.mediaSource = audioSource;
     }

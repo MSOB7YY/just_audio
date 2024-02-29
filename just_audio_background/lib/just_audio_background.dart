@@ -429,6 +429,8 @@ class _PlayerAudioHandler extends BaseAudioHandler
       initialPosition: request.initialPosition,
       initialIndex: request.initialIndex,
       videoOptions: request.videoOptions,
+      videoOnly: request.videoOnly,
+      keepOldVideoSource: request.keepOldVideoSource,
     ));
     return LoadResponse(duration: response.duration);
   }

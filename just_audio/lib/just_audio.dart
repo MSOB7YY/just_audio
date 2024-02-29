@@ -105,6 +105,7 @@ class AudioPlayer {
   final _proxy = _ProxyHttpServer();
   AudioSource? _audioSource;
   VideoOptions? _videoOptions;
+  bool _videoOnly = false;
   bool _keepOldVideoSource = false;
   final Map<String, AudioSource> _audioSources = {};
   bool _disposed = false;
@@ -759,6 +760,7 @@ class AudioPlayer {
     int? initialIndex,
     Duration? initialPosition,
     VideoOptions? videoOptions,
+    bool videoOnly = false,
     bool keepOldVideoSource = false,
   }) async {
     if (_disposed) return null;
@@ -770,6 +772,7 @@ class AudioPlayer {
         updatePosition: initialPosition ?? Duration.zero));
     _audioSource = source;
     _videoOptions = videoOptions;
+    _videoOnly = videoOnly;
     _keepOldVideoSource = keepOldVideoSource;
     _broadcastSequence();
     Duration? duration;
@@ -805,6 +808,7 @@ class AudioPlayer {
         _audioSource!,
         initialSeekValues: initialSeekValues,
         videoOptions: _videoOptions,
+        videoOnly: _videoOnly,
         keepOldVideoSource: _keepOldVideoSource,
       );
     } else {
@@ -850,6 +854,7 @@ class AudioPlayer {
     AudioSource source, {
     _InitialSeekValues? initialSeekValues,
     required VideoOptions? videoOptions,
+    required bool videoOnly,
     required bool keepOldVideoSource,
   }) async {
     final activationNumber = _activationCount;
@@ -870,6 +875,7 @@ class AudioPlayer {
         initialPosition: initialSeekValues?.position,
         initialIndex: initialSeekValues?.index,
         videoOptions: videoOptions,
+        videoOnly: videoOnly,
         keepOldVideoSource: keepOldVideoSource,
       ));
       final duration = response.duration;
@@ -916,6 +922,7 @@ class AudioPlayer {
               end: end,
             ),
       videoOptions: _videoOptions,
+      videoOnly: _videoOnly,
       keepOldVideoSource: _keepOldVideoSource,
     );
     return duration;
@@ -1486,6 +1493,7 @@ class AudioPlayer {
           final duration = await _load(platform, _audioSource!,
               initialSeekValues: initialSeekValues,
               videoOptions: _videoOptions,
+              videoOnly: _videoOnly,
               keepOldVideoSource: _keepOldVideoSource);
           if (checkInterruption()) return platform;
           durationCompleter.complete(duration);

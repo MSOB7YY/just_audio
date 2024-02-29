@@ -553,6 +553,7 @@ class LoadRequest {
   final Duration? initialPosition;
   final int? initialIndex;
   final VideoOptions? videoOptions;
+  final bool videoOnly;
   final bool keepOldVideoSource;
 
   const LoadRequest({
@@ -560,6 +561,7 @@ class LoadRequest {
     this.initialPosition,
     this.initialIndex,
     this.videoOptions,
+    required this.videoOnly,
     this.keepOldVideoSource = false,
   });
 
