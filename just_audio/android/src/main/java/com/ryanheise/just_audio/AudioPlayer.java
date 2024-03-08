@@ -242,7 +242,6 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   }
 
   private void broadcastSessionId(int newSessionId) {
-    System.out.println("JV UPDATING SESSION ID " + newSessionId);
     final Intent intent = new Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION);
     intent.putExtra(AudioEffect.EXTRA_PACKAGE_NAME, context.getPackageName());
     intent.putExtra(AudioEffect.EXTRA_AUDIO_SESSION, newSessionId);
@@ -251,7 +250,6 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   }
 
   private void closeSessionId(int oldSessionId) {
-    System.out.println("JV CLOSING SESSION ID " + oldSessionId);
     final Intent intent = new Intent(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION);
     intent.putExtra(AudioEffect.EXTRA_PACKAGE_NAME, context.getPackageName());
     intent.putExtra(AudioEffect.EXTRA_AUDIO_SESSION, oldSessionId);
