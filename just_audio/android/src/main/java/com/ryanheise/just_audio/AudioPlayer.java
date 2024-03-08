@@ -4,6 +4,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.Intent;
 import android.media.audiofx.AudioEffect;
 import android.media.audiofx.Equalizer;
 import android.media.audiofx.LoudnessEnhancer;
@@ -204,11 +205,21 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   }
 
   private void setAudioSessionId(int audioSessionId) {
+    if (this.audioSessionId != null) {
+      // close old session id if a new one obtained
+      closeSessionId(this.audioSessionId);
+    }
+
     if (audioSessionId == C.AUDIO_SESSION_ID_UNSET) {
       this.audioSessionId = null;
     } else {
       this.audioSessionId = audioSessionId;
     }
+
+    if (this.audioSessionId != null) {
+      broadcastSessionId(this.audioSessionId);
+    }
+
     clearAudioEffects();
     if (this.audioSessionId != null) {
       for (Object rawAudioEffect : rawAudioEffects) {
@@ -228,6 +239,24 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   public void onAudioSessionIdChanged(int audioSessionId) {
     setAudioSessionId(audioSessionId);
     broadcastPendingPlaybackEvent();
+  }
+
+  private void broadcastSessionId(int newSessionId) {
+    System.out.println("JV UPDATING SESSION ID " + newSessionId);
+    final Intent intent = new Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION);
+    intent.putExtra(AudioEffect.EXTRA_PACKAGE_NAME, context.getPackageName());
+    intent.putExtra(AudioEffect.EXTRA_AUDIO_SESSION, newSessionId);
+    intent.putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC);
+    context.sendBroadcast(intent);
+  }
+
+  private void closeSessionId(int oldSessionId) {
+    System.out.println("JV CLOSING SESSION ID " + oldSessionId);
+    final Intent intent = new Intent(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION);
+    intent.putExtra(AudioEffect.EXTRA_PACKAGE_NAME, context.getPackageName());
+    intent.putExtra(AudioEffect.EXTRA_AUDIO_SESSION, oldSessionId);
+    intent.putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC);
+    context.sendBroadcast(intent);
   }
 
   @Override
@@ -1314,6 +1343,9 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     mediaSources.clear();
     videoSources.clear();
     clearAudioEffects();
+    if (this.audioSessionId != null) {
+      closeSessionId(this.audioSessionId);
+    }
     if (player != null) {
       player.release();
       player = null;
