@@ -852,6 +852,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
           throw new IllegalArgumentException("Unknown AudioEffect type: " + map.get("type"));
       }
     } catch (Exception ignore) {
+      return null;
     }
 
   }
