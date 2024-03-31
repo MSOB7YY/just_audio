@@ -222,14 +222,21 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
     clearAudioEffects();
     if (this.audioSessionId != null) {
-      for (Object rawAudioEffect : rawAudioEffects) {
-        Map<?, ?> json = (Map<?, ?>) rawAudioEffect;
-        AudioEffect audioEffect = decodeAudioEffect(rawAudioEffect, this.audioSessionId);
-        if ((Boolean) json.get("enabled")) {
-          audioEffect.setEnabled(true);
+      try {
+        for (Object rawAudioEffect : rawAudioEffects) {
+          Map<?, ?> json = (Map<?, ?>) rawAudioEffect;
+          try {
+            AudioEffect audioEffect = decodeAudioEffect(rawAudioEffect, this.audioSessionId);
+            if ((Boolean) json.get("enabled")) {
+              audioEffect.setEnabled(true);
+            }
+            audioEffects.add(audioEffect);
+            audioEffectsMap.put((String) json.get("type"), audioEffect);
+          } catch (Exception ignore) {
+          }
         }
-        audioEffects.add(audioEffect);
-        audioEffectsMap.put((String) json.get("type"), audioEffect);
+      } catch (Exception ignore) {
+        // audio session might not be correct yet.
       }
     }
     enqueuePlaybackEvent();
@@ -829,20 +836,24 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private AudioEffect decodeAudioEffect(final Object json, int audioSessionId) {
     Map<?, ?> map = (Map<?, ?>) json;
     String type = (String) map.get("type");
-    switch (type) {
-      case "AndroidLoudnessEnhancer":
-        if (Build.VERSION.SDK_INT < 19)
-          throw new RuntimeException("AndroidLoudnessEnhancer requires minSdkVersion >= 19");
-        int targetGain = (int) Math.round((((Double) map.get("targetGain")) * 1000.0));
-        LoudnessEnhancer loudnessEnhancer = new LoudnessEnhancer(audioSessionId);
-        loudnessEnhancer.setTargetGain(targetGain);
-        return loudnessEnhancer;
-      case "AndroidEqualizer":
-        Equalizer equalizer = new Equalizer(0, audioSessionId);
-        return equalizer;
-      default:
-        throw new IllegalArgumentException("Unknown AudioEffect type: " + map.get("type"));
+    try {
+      switch (type) {
+        case "AndroidLoudnessEnhancer":
+          if (Build.VERSION.SDK_INT < 19)
+            throw new RuntimeException("AndroidLoudnessEnhancer requires minSdkVersion >= 19");
+          int targetGain = (int) Math.round((((Double) map.get("targetGain")) * 1000.0));
+          LoudnessEnhancer loudnessEnhancer = new LoudnessEnhancer(audioSessionId);
+          loudnessEnhancer.setTargetGain(targetGain);
+          return loudnessEnhancer;
+        case "AndroidEqualizer":
+          Equalizer equalizer = new Equalizer(0, audioSessionId);
+          return equalizer;
+        default:
+          throw new IllegalArgumentException("Unknown AudioEffect type: " + map.get("type"));
+      }
+    } catch (Exception ignore) {
     }
+
   }
 
   private void clearAudioEffects() {
