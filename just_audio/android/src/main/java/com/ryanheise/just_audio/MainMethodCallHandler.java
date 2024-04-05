@@ -3,6 +3,8 @@ package com.ryanheise.just_audio;
 import android.content.Context;
 import android.util.Rational;
 import androidx.annotation.NonNull;
+import androidx.media3.common.util.UnstableApi;
+
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
@@ -14,6 +16,7 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
 
+@UnstableApi
 public class MainMethodCallHandler implements MethodCallHandler {
 
   private final Context applicationContext;
@@ -66,7 +69,7 @@ public class MainMethodCallHandler implements MethodCallHandler {
         final List<Object> rawAudioEffects = call.argument("androidAudioEffects");
         final TextureRegistry.SurfaceTextureEntry texture = textureRegistry.createSurfaceTexture();
         players.put(id, new AudioPlayer(applicationContext, messenger, id, call.argument("audioLoadConfiguration"),
-            rawAudioEffects, call.argument("androidOffloadSchedulingEnabled"), texture));
+            rawAudioEffects, texture));
         result.success(null);
         break;
       }

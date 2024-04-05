@@ -2,6 +2,9 @@ package com.ryanheise.just_audio;
 
 import android.content.Context;
 import androidx.annotation.NonNull;
+import androidx.annotation.OptIn;
+import androidx.media3.common.util.UnstableApi;
+
 import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.embedding.engine.FlutterEngine.EngineLifecycleListener;
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
@@ -14,7 +17,7 @@ import io.flutter.plugin.common.MethodChannel.Result;
 /**
  * JustAudioPlugin
  */
-public class JustAudioPlugin implements FlutterPlugin {
+@UnstableApi public class JustAudioPlugin implements FlutterPlugin {
   private MethodChannel channel;
   private MainMethodCallHandler methodCallHandler;
 

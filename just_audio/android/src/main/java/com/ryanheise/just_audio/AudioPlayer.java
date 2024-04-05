@@ -1,7 +1,5 @@
 package com.ryanheise.just_audio;
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
@@ -14,49 +12,74 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.Surface;
 import android.util.Rational;
-import com.google.android.exoplayer2.*;
-import com.google.android.exoplayer2.Player.PositionInfo;
-import com.google.android.exoplayer2.audio.*;
-import com.google.android.exoplayer2.extractor.DefaultExtractorsFactory;
-import com.google.android.exoplayer2.metadata.Metadata;
-import com.google.android.exoplayer2.metadata.MetadataOutput;
-import com.google.android.exoplayer2.metadata.icy.IcyHeaders;
-import com.google.android.exoplayer2.metadata.icy.IcyInfo;
-import com.google.android.exoplayer2.source.*;
-import com.google.android.exoplayer2.source.ShuffleOrder.DefaultShuffleOrder;
-import com.google.android.exoplayer2.source.dash.DashMediaSource;
-import com.google.android.exoplayer2.source.dash.DefaultDashChunkSource;
-import com.google.android.exoplayer2.source.hls.HlsMediaSource;
-import com.google.android.exoplayer2.source.smoothstreaming.DefaultSsChunkSource;
-import com.google.android.exoplayer2.source.smoothstreaming.SsMediaSource;
-import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
-import com.google.android.exoplayer2.upstream.DataSource;
-import com.google.android.exoplayer2.upstream.DefaultDataSource;
-import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
-import com.google.android.exoplayer2.util.MimeTypes;
-import com.google.android.exoplayer2.util.Util;
+
+import androidx.media3.common.AudioAttributes;
+import androidx.media3.common.C;
+import androidx.media3.common.Format;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.PlaybackParameters;
+import androidx.media3.common.Player;
+import androidx.media3.common.Player.PositionInfo;
+import androidx.media3.common.Metadata;
+import androidx.media3.common.Timeline;
+import androidx.media3.common.TrackGroup;
+import androidx.media3.common.Tracks;
+import androidx.media3.common.audio.AudioProcessor;
+import androidx.media3.common.audio.SonicAudioProcessor;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.common.util.Util;
+import androidx.media3.datasource.DataSource;
+import androidx.media3.datasource.DefaultDataSource;
+import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl;
+import androidx.media3.exoplayer.DefaultLoadControl;
+import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.exoplayer.ExoPlaybackException;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.LivePlaybackSpeedControl;
+import androidx.media3.exoplayer.LoadControl;
+import androidx.media3.exoplayer.RenderersFactory;
+import androidx.media3.exoplayer.audio.AudioSink;
+import androidx.media3.exoplayer.audio.DefaultAudioSink;
+import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor;
+import androidx.media3.exoplayer.dash.DashMediaSource;
+import androidx.media3.exoplayer.dash.DefaultDashChunkSource;
+import androidx.media3.exoplayer.hls.HlsMediaSource;
+import androidx.media3.exoplayer.metadata.MetadataOutput;
+import androidx.media3.exoplayer.smoothstreaming.DefaultSsChunkSource;
+import androidx.media3.exoplayer.smoothstreaming.SsMediaSource;
+import androidx.media3.exoplayer.source.ClippingMediaSource;
+import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.exoplayer.source.MergingMediaSource;
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
+import androidx.media3.exoplayer.source.ShuffleOrder;
+import androidx.media3.exoplayer.source.SilenceMediaSource;
+import androidx.media3.common.MimeTypes;
+import androidx.media3.extractor.DefaultExtractorsFactory;
+import androidx.media3.extractor.metadata.icy.IcyHeaders;
+import androidx.media3.extractor.metadata.icy.IcyInfo;
 import io.flutter.Log;
 import io.flutter.plugin.common.BinaryMessenger;
-import io.flutter.plugin.common.EventChannel;
-import io.flutter.plugin.common.EventChannel.EventSink;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 import io.flutter.view.TextureRegistry;
 
-import com.ryanheise.video_player.*;
 import com.danikula.videocache.HttpProxyCacheServer;
+import com.ryanheise.video_player.CacheDataSourceFactory;
+import com.ryanheise.video_player.ProxyFactory;
 
-import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
+@SuppressWarnings("deprecation")
+@UnstableApi
 public class AudioPlayer implements MethodCallHandler, Player.Listener, MetadataOutput {
 
   static final String TAG = "AudioPlayer";
@@ -88,7 +111,6 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private int errorCount;
   private AudioAttributes pendingAudioAttributes;
   private LoadControl loadControl;
-  private boolean offloadSchedulingEnabled;
   private LivePlaybackSpeedControl livePlaybackSpeedControl;
   private List<Object> rawAudioEffects;
   private List<AudioEffect> audioEffects = new ArrayList<AudioEffect>();
@@ -149,11 +171,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   };
 
   public AudioPlayer(final Context applicationContext, final BinaryMessenger messenger, final String id,
-      Map<?, ?> audioLoadConfiguration, List<Object> rawAudioEffects, Boolean offloadSchedulingEnabled,
+      Map<?, ?> audioLoadConfiguration, List<Object> rawAudioEffects,
       TextureRegistry.SurfaceTextureEntry textureEntry) {
     this.context = applicationContext;
     this.rawAudioEffects = rawAudioEffects;
-    this.offloadSchedulingEnabled = offloadSchedulingEnabled != null ? offloadSchedulingEnabled : false;
     this.textureEntry = textureEntry;
     surface = new Surface(textureEntry.surfaceTexture());
     methodChannel = new MethodChannel(messenger, "com.ryanheise.just_audio.methods." + id);
@@ -610,7 +631,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     for (int i = 0; i < shuffleIndices.length; i++) {
       shuffleIndices[i] = indexList.get(i);
     }
-    return new DefaultShuffleOrder(shuffleIndices, random.nextLong());
+    return new ShuffleOrder.DefaultShuffleOrder(shuffleIndices, random.nextLong());
   }
 
   private static int[] shuffle(int length, Integer firstIndex) {
@@ -636,11 +657,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   // Create a shuffle order optionally fixing the first index.
   private ShuffleOrder createShuffleOrder(int length, Integer firstIndex) {
     int[] shuffleIndices = shuffle(length, firstIndex);
-    return new DefaultShuffleOrder(shuffleIndices, random.nextLong());
+    return new ShuffleOrder.DefaultShuffleOrder(shuffleIndices, random.nextLong());
   }
 
-  private ConcatenatingMediaSource concatenating(final Object index) {
-    return (ConcatenatingMediaSource) mediaSources.get((String) index);
+  private androidx.media3.exoplayer.source.ConcatenatingMediaSource concatenating(final Object index) {
+    return (androidx.media3.exoplayer.source.ConcatenatingMediaSource) mediaSources.get((String) index);
   }
 
   private void setShuffleOrder(final Object json) {
@@ -651,8 +672,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       return;
     switch ((String) mapGet(map, "type")) {
       case "concatenating":
-        ConcatenatingMediaSource concatenatingMediaSource = (ConcatenatingMediaSource) mediaSource;
-        concatenatingMediaSource.setShuffleOrder(decodeShuffleOrder(mapGet(map, "shuffleOrder")));
+        player.setShuffleOrder(decodeShuffleOrder(mapGet(map, "shuffleOrder")));
         List<Object> children = mapGet(map, "children");
         for (Object child : children) {
           setShuffleOrder(child);
@@ -795,7 +815,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
             .createMediaSource();
       case "concatenating":
         MediaSource[] mediaSources = getAudioSourcesArray(map.get("children"));
-        return new ConcatenatingMediaSource(false, // isAtomic
+        return new androidx.media3.exoplayer.source.ConcatenatingMediaSource(false, // isAtomic
             (Boolean) map.get("useLazyPreparation"), decodeShuffleOrder(mapGet(map, "shuffleOrder")), mediaSources);
       case "clipping":
         Long start = getLong(map.get("start"));
@@ -809,7 +829,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         for (int i = 0; i < looperChildren.length; i++) {
           looperChildren[i] = looperChild;
         }
-        return new ConcatenatingMediaSource(looperChildren);
+        return new androidx.media3.exoplayer.source.ConcatenatingMediaSource(looperChildren);
       default:
         throw new IllegalArgumentException("Unknown AudioSource type: " + map.get("type"));
     }
@@ -976,7 +996,6 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
           builder.setLoadControl(loadControl);
         }
         loopingPlayer = builder.build();
-        loopingPlayer.experimentalSetOffloadSchedulingEnabled(offloadSchedulingEnabled);
         loopingPlayer.setVideoSurface(surface);
       }
       loopingPlayer.setMediaSource(this.videoSource);
@@ -1048,7 +1067,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       RenderersFactory renderersFactory = new DefaultRenderersFactory(context) {
         @Override
         protected AudioSink buildAudioSink(Context context, boolean enableFloatOutput,
-            boolean enableAudioTrackPlaybackParams, boolean enableOffload) {
+            boolean enableAudioTrackPlaybackParams) {
           return new DefaultAudioSink.Builder()
               .setAudioProcessorChain(new DefaultAudioSink.DefaultAudioProcessorChain(new AudioProcessor[0], // silence
                   // and
@@ -1061,11 +1080,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
               .build();
         }
-      }.setEnableAudioOffload(offloadSchedulingEnabled);
+      };
 
       builder.setRenderersFactory(renderersFactory);
       player = builder.build();
-      player.experimentalSetOffloadSchedulingEnabled(offloadSchedulingEnabled);
       setAudioSessionId(player.getAudioSessionId());
       player.setVideoSurface(surface);
       player.addListener(this);
@@ -1435,7 +1453,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     if (!hasVideo())
       return null;
     final Format info = (loopingPlayer != null ? loopingPlayer : player).getVideoFormat();
-    return info == null ? new Rational(1, 1) : new Rational(info.width, info.height);
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+      return info == null ? new Rational(1, 1) : new Rational(info.width, info.height);
+    }
+    return null;
   }
 
 }

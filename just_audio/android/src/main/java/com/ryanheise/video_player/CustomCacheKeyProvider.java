@@ -1,9 +1,11 @@
 package com.ryanheise.video_player;
 
-import com.google.android.exoplayer2.upstream.DataSpec;
-import com.google.android.exoplayer2.upstream.cache.CacheKeyFactory;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.datasource.DataSpec;
+import androidx.media3.datasource.cache.CacheKeyFactory;
 
-public class CustomCacheKeyProvider implements CacheKeyFactory {
+
+@UnstableApi public class CustomCacheKeyProvider implements CacheKeyFactory {
   private final String cacheKey;
 
   CustomCacheKeyProvider(String cacheKey) {

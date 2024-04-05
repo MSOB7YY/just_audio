@@ -1,15 +1,24 @@
 package com.ryanheise.video_player;
 
 import android.content.Context;
-import androidx.annotation.Nullable;
-import android.util.Log;
 
-import com.google.android.exoplayer2.upstream.*;
-import com.google.android.exoplayer2.upstream.cache.CacheDataSource;
-import com.google.android.exoplayer2.upstream.cache.*;
+import androidx.annotation.Nullable;
+import androidx.annotation.OptIn;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.datasource.DataSource;
+import androidx.media3.datasource.DefaultDataSource;
+import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.datasource.FileDataSource;
+import androidx.media3.datasource.cache.CacheDataSink;
+import androidx.media3.datasource.cache.CacheDataSource;
+import androidx.media3.datasource.cache.CacheKeyFactory;
+import androidx.media3.datasource.cache.SimpleCache;
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
+
 
 import java.util.Map;
 
+@UnstableApi
 public class CacheDataSourceFactory implements DataSource.Factory {
     private final Context context;
     private DefaultDataSource.Factory defaultDatasourceFactory;

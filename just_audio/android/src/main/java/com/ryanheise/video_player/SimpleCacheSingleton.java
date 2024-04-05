@@ -1,13 +1,16 @@
 package com.ryanheise.video_player;
 
 import android.content.Context;
-import com.google.android.exoplayer2.database.StandaloneDatabaseProvider;
-import com.google.android.exoplayer2.upstream.cache.LeastRecentlyUsedCacheEvictor;
-import com.google.android.exoplayer2.upstream.cache.SimpleCache;
+
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.database.StandaloneDatabaseProvider;
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor;
+import androidx.media3.datasource.cache.SimpleCache;
+
 
 import java.io.File;
 
-public class SimpleCacheSingleton {
+@UnstableApi public class SimpleCacheSingleton {
   LeastRecentlyUsedCacheEvictor evictor;
   SimpleCache simpleCache;
 
