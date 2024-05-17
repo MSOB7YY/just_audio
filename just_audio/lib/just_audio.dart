@@ -389,6 +389,9 @@ class AudioPlayer {
   Stream<ProcessingState> get processingStateStream =>
       _processingStateSubject.stream;
 
+  /// Whether the player is disposed.
+  bool get isDisposed => _disposed;
+
   /// Whether the player is playing.
   bool get playing => _playingSubject.nvalue!;
 
