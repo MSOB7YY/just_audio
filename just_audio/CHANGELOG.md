@@ -1,3 +1,27 @@
+## 0.9.39
+
+* Apply preferPreciseDurationAndTiming to files (@canxin121).
+* Add tag parameter to setUrl/setFilePath/setAsset (@mathisfouques).
+* Add tag parameter to setClip (@goviral-ma).
+
+## 0.9.38
+
+* Migrate to package:web.
+* Add AudioPlayer.setWebCrossOrigin for CORS on web (@danielwinkler).
+
+## 0.9.37
+
+* Support useLazyPreparation on iOS/macOS.
+* Add index in sequence to errors for Android/iOS/macOS.
+* Fix seek to index UI update on iOS/macOS.
+
+## 0.9.36
+
+* Add setAllowsExternalPlayback on iOS/macOS.
+* Support index-based seeking on Android/iOS/macOS.
+* Add option to send headers/userAgent without proxy.
+* Fix bug where user supplied headers are overwritten by defaults (@ctedgar).
+
 ## 0.9.35
 
 * Fix nullable completer argument type (@srawlins).

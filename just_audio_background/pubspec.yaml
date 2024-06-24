@@ -1,7 +1,7 @@
 name: just_audio_background
 description: An add-on for just_audio that supports background playback and media notifications.
 homepage: https://github.com/ryanheise/just_audio/tree/master/just_audio_background
-version: 0.0.1-beta.10
+version: 0.0.1-beta.12
 topics:
   - audio
   - sound
@@ -9,7 +9,7 @@ topics:
   - background
 
 dependencies:
-  # just_audio_platform_interface: ^4.2.1
+  # just_audio_platform_interface: ^4.3.0
   # just_audio_platform_interface:
   #   path: ../just_audio_platform_interface
   just_audio_platform_interface:
@@ -29,5 +29,5 @@ dev_dependencies:
   flutter_lints: ^2.0.1
 
 environment:
-  sdk: ">=2.14.0 <4.0.0"
-  flutter: ">=3.0.0"
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
