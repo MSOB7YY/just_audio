@@ -1385,7 +1385,9 @@ class AudioPlayer {
       if (!force) {
         final oldPlatform = _platformValue!;
         if (oldPlatform is! _IdleAudioPlayer) {
-          await _disposePlatform(oldPlatform);
+          try {
+            await _disposePlatform(oldPlatform);
+          } catch (_) {}
         }
       }
       if (_disposed) return _platform;
@@ -1522,7 +1524,9 @@ class AudioPlayer {
         await _pluginPlatform.disposePlayer(DisposePlayerRequest(id: _id));
       } catch (e) {
         // Fallback if disposePlayer hasn't been implemented.
-        await platform.dispose(DisposeRequest());
+        try {
+          await platform.dispose(DisposeRequest());
+        } catch (_) {}
       }
     }
   }
