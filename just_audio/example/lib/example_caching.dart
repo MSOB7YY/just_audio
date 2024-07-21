@@ -50,8 +50,8 @@ class MyAppState extends State<MyApp> with WidgetsBindingObserver {
     try {
       // Use resolve() if you want to obtain a UriAudioSource pointing directly
       // to the cache file.
-      // await _player.setAudioSource(await _audioSource.resolve());
-      await _player.setAudioSource(_audioSource);
+      // await _player.setSource(await _audioSource.resolve());
+      await _player.setSource(_audioSource);
     } catch (e) {
       print("Error loading audio source: $e");
     }

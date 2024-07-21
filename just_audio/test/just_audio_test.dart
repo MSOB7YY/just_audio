@@ -91,21 +91,21 @@ void runTests() {
     final player = AudioPlayer();
     void expectAsset(String uri, {dynamic tag}) {
       final audioSource = player.audioSource;
-      expect(audioSource is UriAudioSource && audioSource.uri.toString() == uri,
+      expect(audioSource is UriSource && audioSource.uri.toString() == uri,
           equals(true));
-      expect(audioSource is UriAudioSource && audioSource.tag == tag,
-          equals(true));
+      expect(audioSource is UriSource && audioSource.tag == tag, equals(true));
     }
 
     await player.setAsset('audio/foo.mp3', preload: false);
     expectAsset('asset:///audio/foo.mp3');
     await player.setAsset('audio/foo.mp3', package: 'bar', preload: false);
     expectAsset('asset:///packages/bar/audio/foo.mp3');
-    await player.setAudioSource(AudioSource.asset('audio/foo.mp3'),
+    await player.setSource(AudioVideoSource.asset('audio/foo.mp3'),
         preload: false);
     expectAsset('asset:///audio/foo.mp3');
-    await player.setAudioSource(
-        AudioSource.asset('audio/foo.mp3', package: 'bar', tag: 'asset-tag'),
+    await player.setSource(
+        AudioVideoSource.asset('audio/foo.mp3',
+            package: 'bar', tag: 'asset-tag'),
         preload: false);
     expectAsset('asset:///packages/bar/audio/foo.mp3', tag: 'asset-tag');
   });
@@ -127,18 +127,18 @@ void runTests() {
     await player.seek(const Duration(seconds: 1));
     expectState(
         player: player, playing: false, position: const Duration(seconds: 1));
-    final playlist = ConcatenatingAudioSource(children: []);
-    await player.setAudioSource(playlist, preload: false);
+    final playlist = ConcatenatingSource(children: []);
+    await player.setSource(playlist, preload: false);
     await playlist.addAll([
-      AudioSource.uri(
+      AudioVideoSource.uri(
         Uri.parse("https://foo.foo/foo.mp3"),
         tag: 'a',
       ),
-      AudioSource.uri(
+      AudioVideoSource.uri(
         Uri.parse("https://bar.bar/bar.mp3"),
         tag: 'b',
       ),
-      AudioSource.uri(
+      AudioVideoSource.uri(
         Uri.parse("https://baz.baz/baz.mp3"),
         tag: 'c',
       ),
@@ -441,7 +441,7 @@ void runTests() {
     await server.start();
     final player = AudioPlayer();
     // This simulates an actual URL
-    await player.setAudioSource(TestStreamAudioSource(tag: 'stream-test'));
+    await player.setSource(TestStreamSource(tag: 'stream-test'));
     // Obtain the proxy URL that the platform side should use to load the data.
     final proxyUri = Uri.parse(player.icyMetadata!.info!.url!);
     // Simulate the platform side requesting the data.
@@ -489,44 +489,44 @@ void runTests() {
   });
 
   test('sequence', () async {
-    final source1 = ConcatenatingAudioSource(children: [
-      LoopingAudioSource(
+    final source1 = ConcatenatingSource(children: [
+      LoopingSource(
         count: 2,
-        child: ClippingAudioSource(
+        child: ClippingSource(
           start: const Duration(seconds: 60),
           end: const Duration(seconds: 65),
-          child: AudioSource.uri(Uri.parse("https://foo.foo/foo.mp3")),
+          child: AudioVideoSource.uri(Uri.parse("https://foo.foo/foo.mp3")),
           tag: 'a',
         ),
       ),
-      AudioSource.uri(
+      AudioVideoSource.uri(
         Uri.parse("https://bar.bar/bar.mp3"),
         tag: 'b',
       ),
-      AudioSource.uri(
+      AudioVideoSource.uri(
         Uri.parse("https://baz.baz/baz.mp3"),
         tag: 'c',
       ),
     ]);
     expect(source1.sequence.map((s) => s.tag as String?).toList(),
         equals(['a', 'a', 'b', 'c']));
-    final source2 = ConcatenatingAudioSource(children: []);
+    final source2 = ConcatenatingSource(children: []);
     final player = AudioPlayer();
-    await player.setAudioSource(source2);
+    await player.setSource(source2);
     expect(source2.sequence.length, equals(0));
     await source2
-        .add(AudioSource.uri(Uri.parse('https://b.b/b.mp3'), tag: 'b'));
+        .add(AudioVideoSource.uri(Uri.parse('https://b.b/b.mp3'), tag: 'b'));
     await source2.insert(
-        0, AudioSource.uri(Uri.parse('https://a.a/a.mp3'), tag: 'a'));
+        0, AudioVideoSource.uri(Uri.parse('https://a.a/a.mp3'), tag: 'a'));
     await source2.insert(
-        2, AudioSource.uri(Uri.parse('https://c.c/c.mp3'), tag: 'c'));
+        2, AudioVideoSource.uri(Uri.parse('https://c.c/c.mp3'), tag: 'c'));
     await source2.addAll([
-      AudioSource.uri(Uri.parse('https://d.d/d.mp3'), tag: 'd'),
-      AudioSource.uri(Uri.parse('https://e.e/e.mp3'), tag: 'e'),
+      AudioVideoSource.uri(Uri.parse('https://d.d/d.mp3'), tag: 'd'),
+      AudioVideoSource.uri(Uri.parse('https://e.e/e.mp3'), tag: 'e'),
     ]);
     await source2.insertAll(3, [
-      AudioSource.uri(Uri.parse('https://e.e/e.mp3'), tag: 'e'),
-      AudioSource.uri(Uri.parse('https://f.f/f.mp3'), tag: 'f'),
+      AudioVideoSource.uri(Uri.parse('https://e.e/e.mp3'), tag: 'e'),
+      AudioVideoSource.uri(Uri.parse('https://f.f/f.mp3'), tag: 'f'),
     ]);
     expect(source2.sequence.map((s) => s.tag as String?),
         equals(['a', 'b', 'c', 'e', 'f', 'd', 'e']));
@@ -553,23 +553,24 @@ void runTests() {
   });
 
   test('idle-sequence', () async {
-    final source = ConcatenatingAudioSource(children: []);
+    final source = ConcatenatingSource(children: []);
     final player = AudioPlayer();
-    await player.setAudioSource(source);
+    await player.setSource(source);
     await player.stop();
     expect(source.sequence.length, equals(0));
-    await source.add(AudioSource.uri(Uri.parse('https://b.b/b.mp3'), tag: 'b'));
+    await source
+        .add(AudioVideoSource.uri(Uri.parse('https://b.b/b.mp3'), tag: 'b'));
     await source.insert(
-        0, AudioSource.uri(Uri.parse('https://a.a/a.mp3'), tag: 'a'));
+        0, AudioVideoSource.uri(Uri.parse('https://a.a/a.mp3'), tag: 'a'));
     await source.insert(
-        2, AudioSource.uri(Uri.parse('https://c.c/c.mp3'), tag: 'c'));
+        2, AudioVideoSource.uri(Uri.parse('https://c.c/c.mp3'), tag: 'c'));
     await source.addAll([
-      AudioSource.uri(Uri.parse('https://d.d/d.mp3'), tag: 'd'),
-      AudioSource.uri(Uri.parse('https://e.e/e.mp3'), tag: 'e'),
+      AudioVideoSource.uri(Uri.parse('https://d.d/d.mp3'), tag: 'd'),
+      AudioVideoSource.uri(Uri.parse('https://e.e/e.mp3'), tag: 'e'),
     ]);
     await source.insertAll(3, [
-      AudioSource.uri(Uri.parse('https://e.e/e.mp3'), tag: 'e'),
-      AudioSource.uri(Uri.parse('https://f.f/f.mp3'), tag: 'f'),
+      AudioVideoSource.uri(Uri.parse('https://e.e/e.mp3'), tag: 'e'),
+      AudioVideoSource.uri(Uri.parse('https://f.f/f.mp3'), tag: 'f'),
     ]);
     expect(source.sequence.map((s) => s.tag as String?),
         equals(['a', 'b', 'c', 'e', 'f', 'd', 'e']));
@@ -601,25 +602,25 @@ void runTests() {
       if (shuffle) {
         await player.setShuffleModeEnabled(shuffle);
       }
-      final playlist = ConcatenatingAudioSource(
+      final playlist = ConcatenatingSource(
         children: [
-          AudioSource.uri(
+          AudioVideoSource.uri(
             Uri.parse("https://bar.bar/a.mp3"),
             tag: 'a',
           ),
-          AudioSource.uri(
+          AudioVideoSource.uri(
             Uri.parse("https://baz.baz/b.mp3"),
             tag: 'b',
           ),
-          AudioSource.uri(
+          AudioVideoSource.uri(
             Uri.parse("https://baz.baz/c.mp3"),
             tag: 'c',
           ),
-          AudioSource.uri(
+          AudioVideoSource.uri(
             Uri.parse("https://baz.baz/d.mp3"),
             tag: 'd',
           ),
-          AudioSource.uri(
+          AudioVideoSource.uri(
             Uri.parse("https://baz.baz/e.mp3"),
             tag: 'e',
           ),
@@ -636,9 +637,9 @@ void runTests() {
       }
 
       //List<int> effectiveSequenceToIndices() {
-      //  return player.effectiveSequence.map((IndexedAudioSource item) => player1.sequence.indexOf(item)).toList();
+      //  return player.effectiveSequence.map((IndexedSource item) => player1.sequence.indexOf(item)).toList();
       //}
-      await player.setAudioSource(playlist);
+      await player.setSource(playlist);
       expect(player.sequenceState?.sequence, equals(playlist.children));
       expect(player.sequenceState?.currentIndex, equals(0));
       expect(player.sequenceState?.currentSource, equals(playlist.children[0]));
@@ -684,15 +685,15 @@ void runTests() {
   });
 
   test('detect', () async {
-    expect(AudioSource.uri(Uri.parse('https://a.a/a.mpd')) is DashAudioSource,
+    expect(AudioVideoSource.uri(Uri.parse('https://a.a/a.mpd')) is DashSource,
         equals(true));
-    expect(AudioSource.uri(Uri.parse('https://a.a/a.m3u8')) is HlsAudioSource,
+    expect(AudioVideoSource.uri(Uri.parse('https://a.a/a.m3u8')) is HlsSource,
         equals(true));
     expect(
-        AudioSource.uri(Uri.parse('https://a.a/a.mp3'))
-            is ProgressiveAudioSource,
+        AudioVideoSource.uri(Uri.parse('https://a.a/a.mp3'))
+            is ProgressiveSource,
         equals(true));
-    expect(AudioSource.uri(Uri.parse('https://a.a/a#.mpd')) is DashAudioSource,
+    expect(AudioVideoSource.uri(Uri.parse('https://a.a/a#.mpd')) is DashSource,
         equals(true));
   });
 
@@ -736,28 +737,29 @@ void runTests() {
   });
 
   test('shuffle', () async {
-    AudioSource createSource() => ConcatenatingAudioSource(
+    AudioVideoSource createSource() => ConcatenatingSource(
           shuffleOrder: DefaultShuffleOrder(random: Random(1001)),
           children: [
-            LoopingAudioSource(
+            LoopingSource(
               count: 2,
-              child: ClippingAudioSource(
+              child: ClippingSource(
                 start: const Duration(seconds: 60),
                 end: const Duration(seconds: 65),
-                child: AudioSource.uri(Uri.parse("https://foo.foo/foo.mp3")),
+                child:
+                    AudioVideoSource.uri(Uri.parse("https://foo.foo/foo.mp3")),
                 tag: 'a',
               ),
             ),
-            AudioSource.uri(
+            AudioVideoSource.uri(
               Uri.parse("https://bar.bar/bar.mp3"),
               tag: 'b',
             ),
-            AudioSource.uri(
+            AudioVideoSource.uri(
               Uri.parse("https://baz.baz/baz.mp3"),
               tag: 'c',
             ),
-            ClippingAudioSource(
-              child: AudioSource.uri(
+            ClippingSource(
+              child: AudioVideoSource.uri(
                 Uri.parse("https://baz.baz/baz.mp3"),
                 tag: 'd',
               ),
@@ -770,7 +772,7 @@ void runTests() {
     expect(source1.shuffleIndices.skipWhile((i) => i != 0).skip(1).first,
         equals(1));
     final player1 = AudioPlayer();
-    await player1.setAudioSource(source1);
+    await player1.setSource(source1);
     checkIndices(player1.shuffleIndices!, 5);
     expect(player1.shuffleIndices!.first, equals(0));
     expect(player1.effectiveIndices!,
@@ -787,28 +789,28 @@ void runTests() {
 
     final source2 = createSource();
     final player2 = AudioPlayer();
-    await player2.setAudioSource(source2, initialIndex: 3);
+    await player2.setSource(source2, initialIndex: 3);
     checkIndices(player2.shuffleIndices!, 5);
     expect(player2.shuffleIndices!.first, equals(3));
     await player2.dispose();
   });
 
   test('seekToIndex', () async {
-    final source = ConcatenatingAudioSource(
+    final source = ConcatenatingSource(
       shuffleOrder: DefaultShuffleOrder(random: Random(1001)),
       children: [
-        AudioSource.uri(
+        AudioVideoSource.uri(
           Uri.parse("https://bar.bar/foo.mp3"),
           tag: 'foo',
         ),
-        AudioSource.uri(
+        AudioVideoSource.uri(
           Uri.parse("https://baz.baz/bar.mp3"),
           tag: 'bar',
         ),
       ],
     );
     final player = AudioPlayer();
-    await player.setAudioSource(source);
+    await player.setSource(source);
     expect(player.currentIndex, 0);
     expect(player.hasPrevious, false);
     expect(player.hasNext, true);
@@ -826,14 +828,14 @@ void runTests() {
   });
 
   test('stop', () async {
-    final source = ConcatenatingAudioSource(
+    final source = ConcatenatingSource(
       shuffleOrder: DefaultShuffleOrder(random: Random(1001)),
       children: [
-        AudioSource.uri(
+        AudioVideoSource.uri(
           Uri.parse("https://bar.bar/foo.mp3"),
           tag: 'foo',
         ),
-        AudioSource.uri(
+        AudioVideoSource.uri(
           Uri.parse("https://baz.baz/bar.mp3"),
           tag: 'bar',
         ),
@@ -841,7 +843,7 @@ void runTests() {
     );
     final player = AudioPlayer();
     expect(player.processingState, ProcessingState.idle);
-    await player.setAudioSource(source, preload: false);
+    await player.setSource(source, preload: false);
     expect(player.processingState, ProcessingState.idle);
     await player.load();
     expect(player.processingState, ProcessingState.ready);
@@ -924,11 +926,11 @@ void runTests() {
 
   test('set-set', () async {
     final player = AudioPlayer();
-    await player.setAudioSource(
-      ConcatenatingAudioSource(
+    await player.setSource(
+      ConcatenatingSource(
         children: [
-          AudioSource.uri(Uri.parse('https://bar.bar/foo.mp3')),
-          AudioSource.uri(Uri.parse('https://bar.bar/bar.mp3')),
+          AudioVideoSource.uri(Uri.parse('https://bar.bar/foo.mp3')),
+          AudioVideoSource.uri(Uri.parse('https://bar.bar/bar.mp3')),
         ],
       ),
       preload: false,
@@ -936,12 +938,12 @@ void runTests() {
     expect(player.processingState, equals(ProcessingState.idle));
     expect(player.sequence!.length, equals(2));
     expect(player.playing, equals(false));
-    await player.setAudioSource(
-      ConcatenatingAudioSource(
+    await player.setSource(
+      ConcatenatingSource(
         children: [
-          AudioSource.uri(Uri.parse('https://bar.bar/foo.mp3')),
-          AudioSource.uri(Uri.parse('https://bar.bar/bar.mp3')),
-          AudioSource.uri(Uri.parse('https://bar.bar/baz.mp3')),
+          AudioVideoSource.uri(Uri.parse('https://bar.bar/foo.mp3')),
+          AudioVideoSource.uri(Uri.parse('https://bar.bar/bar.mp3')),
+          AudioVideoSource.uri(Uri.parse('https://bar.bar/baz.mp3')),
         ],
       ),
       preload: false,
@@ -954,23 +956,23 @@ void runTests() {
 
   test('load-load', () async {
     final player = AudioPlayer();
-    await player.setAudioSource(
-      ConcatenatingAudioSource(
+    await player.setSource(
+      ConcatenatingSource(
         children: [
-          AudioSource.uri(Uri.parse('https://bar.bar/foo.mp3')),
-          AudioSource.uri(Uri.parse('https://bar.bar/bar.mp3')),
+          AudioVideoSource.uri(Uri.parse('https://bar.bar/foo.mp3')),
+          AudioVideoSource.uri(Uri.parse('https://bar.bar/bar.mp3')),
         ],
       ),
     );
     expect(player.processingState, equals(ProcessingState.ready));
     expect(player.sequence!.length, equals(2));
     expect(player.playing, equals(false));
-    await player.setAudioSource(
-      ConcatenatingAudioSource(
+    await player.setSource(
+      ConcatenatingSource(
         children: [
-          AudioSource.uri(Uri.parse('https://bar.bar/foo.mp3')),
-          AudioSource.uri(Uri.parse('https://bar.bar/bar.mp3')),
-          AudioSource.uri(Uri.parse('https://bar.bar/baz.mp3')),
+          AudioVideoSource.uri(Uri.parse('https://bar.bar/foo.mp3')),
+          AudioVideoSource.uri(Uri.parse('https://bar.bar/bar.mp3')),
+          AudioVideoSource.uri(Uri.parse('https://bar.bar/baz.mp3')),
         ],
       ),
     );
@@ -982,23 +984,23 @@ void runTests() {
 
   test('load-set-load', () async {
     final player = AudioPlayer();
-    await player.setAudioSource(
-      ConcatenatingAudioSource(
+    await player.setSource(
+      ConcatenatingSource(
         children: [
-          AudioSource.uri(Uri.parse('https://bar.bar/foo.mp3')),
-          AudioSource.uri(Uri.parse('https://bar.bar/bar.mp3')),
+          AudioVideoSource.uri(Uri.parse('https://bar.bar/foo.mp3')),
+          AudioVideoSource.uri(Uri.parse('https://bar.bar/bar.mp3')),
         ],
       ),
     );
     expect(player.processingState, equals(ProcessingState.ready));
     expect(player.sequence!.length, equals(2));
     expect(player.playing, equals(false));
-    await player.setAudioSource(
-      ConcatenatingAudioSource(
+    await player.setSource(
+      ConcatenatingSource(
         children: [
-          AudioSource.uri(Uri.parse('https://bar.bar/foo.mp3')),
-          AudioSource.uri(Uri.parse('https://bar.bar/bar.mp3')),
-          AudioSource.uri(Uri.parse('https://bar.bar/baz.mp3')),
+          AudioVideoSource.uri(Uri.parse('https://bar.bar/foo.mp3')),
+          AudioVideoSource.uri(Uri.parse('https://bar.bar/bar.mp3')),
+          AudioVideoSource.uri(Uri.parse('https://bar.bar/baz.mp3')),
         ],
       ),
       preload: false,
@@ -1160,13 +1162,13 @@ void runTests() {
 
   test('positionStream emissions: switch audio sources', () async {
     final player = AudioPlayer();
-    final playlist = ConcatenatingAudioSource(
+    final playlist = ConcatenatingSource(
       children: [
-        AudioSource.uri(Uri.parse('https://bar.bar/foo.mp3')),
-        AudioSource.uri(Uri.parse('https://bar.bar/bar.mp3')),
+        AudioVideoSource.uri(Uri.parse('https://bar.bar/foo.mp3')),
+        AudioVideoSource.uri(Uri.parse('https://bar.bar/bar.mp3')),
       ],
     );
-    await player.setAudioSource(playlist);
+    await player.setSource(playlist);
     expectState(
       player: player,
       position: Duration.zero,
@@ -1239,17 +1241,17 @@ void runTests() {
     final discontinuityEvents = <PositionDiscontinuity>[];
     final subscription =
         player.positionDiscontinuityStream.listen(discontinuityEvents.add);
-    final playlist = ConcatenatingAudioSource(children: [
-      AudioSource.uri(
+    final playlist = ConcatenatingSource(children: [
+      AudioVideoSource.uri(
         Uri.parse("https://bar.bar/bar.mp3"),
         tag: 'a',
       ),
-      AudioSource.uri(
+      AudioVideoSource.uri(
         Uri.parse("https://baz.baz/baz.mp3"),
         tag: 'b',
       ),
     ]);
-    await player.setAudioSource(playlist);
+    await player.setSource(playlist);
     expect(player.currentIndex, equals(0));
     expect(discontinuityEvents.length, equals(0));
     player.play();
@@ -1416,7 +1418,7 @@ final icyMetadata = IcyMetadata(
   ),
 );
 
-final icyMetadataMessage = IcyMetadataMessage(
+const icyMetadataMessage = IcyMetadataMessage(
   headers: IcyHeadersMessage(
     url: 'url',
     genre: 'Genre',
@@ -1434,7 +1436,7 @@ final icyMetadataMessage = IcyMetadataMessage(
 class MockAudioPlayer extends AudioPlayerPlatform {
   final eventController = StreamController<PlaybackEventMessage>();
   final AudioLoadConfigurationMessage? audioLoadConfiguration;
-  AudioSourceMessage? _audioSource;
+  SourceMessage? _audioSource;
   ProcessingStateMessage _processingState = ProcessingStateMessage.idle;
   Duration _updatePosition = Duration.zero;
   DateTime _updateTime = DateTime.now();
@@ -1464,7 +1466,7 @@ class MockAudioPlayer extends AudioPlayerPlatform {
     final audioSource = request.audioSourceMessage;
     _processingState = ProcessingStateMessage.loading;
     _broadcastPlaybackEvent();
-    if (audioSource is UriAudioSourceMessage) {
+    if (audioSource is UriSourceMessage) {
       if (audioSource.uri.contains('abort')) {
         throw PlatformException(code: 'abort', message: 'Failed to load URL');
       } else if (audioSource.uri.contains('404')) {
@@ -1473,7 +1475,7 @@ class MockAudioPlayer extends AudioPlayerPlatform {
         throw PlatformException(code: 'error', message: 'Unknown error');
       }
       _duration = audioSourceDuration;
-    } else if (audioSource is ClippingAudioSourceMessage) {
+    } else if (audioSource is ClippingSourceMessage) {
       _duration = (audioSource.end ?? audioSourceDuration) -
           (audioSource.start ?? Duration.zero);
     } else {
@@ -1626,9 +1628,9 @@ class MockAudioPlayer extends AudioPlayerPlatform {
 
   void _broadcastPlaybackEvent() {
     String? url;
-    if (_audioSource is UriAudioSourceMessage) {
+    if (_audioSource is UriSourceMessage) {
       // Not sure why this cast is necessary...
-      url = (_audioSource as UriAudioSourceMessage).uri.toString();
+      url = (_audioSource as UriSourceMessage).uri.toString();
     }
     eventController.add(PlaybackEventMessage(
       processingState: _processingState,
@@ -1729,8 +1731,8 @@ class MockAudioPlayer extends AudioPlayerPlatform {
 
 final byteRangeData = List.generate(200, (i) => i);
 
-class TestStreamAudioSource extends StreamAudioSource {
-  TestStreamAudioSource({dynamic tag}) : super(tag: tag);
+class TestStreamSource extends StreamSource {
+  TestStreamSource({dynamic tag}) : super(tag: tag);
 
   @override
   Future<StreamAudioResponse> request([int? start, int? end]) async {

@@ -16,7 +16,7 @@
 ## 4.0.0
 
 - Add playerDataMessageStream.
-- Add tag to IndexedAudioSourceMessage.
+- Add tag to IndexedSourceMessage.
 
 ## 3.1.0
 

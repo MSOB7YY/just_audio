@@ -25,11 +25,11 @@ class MyApp extends StatefulWidget {
 class MyAppState extends State<MyApp> {
   static int _nextMediaId = 0;
   late AudioPlayer _player;
-  final _playlist = ConcatenatingAudioSource(children: [
-    ClippingAudioSource(
+  final _playlist = ConcatenatingSource(children: [
+    ClippingSource(
       start: const Duration(seconds: 60),
       end: const Duration(seconds: 90),
-      child: AudioSource.uri(Uri.parse(
+      child: AudioVideoSource.uri(Uri.parse(
           "https://s3.amazonaws.com/scifri-episodes/scifri20181123-episode.mp3")),
       tag: MediaItem(
         id: '${_nextMediaId++}',
@@ -39,7 +39,7 @@ class MyAppState extends State<MyApp> {
             "https://media.wnyc.org/i/1400/1400/l/80/1/ScienceFriday_WNYCStudios_1400.jpg"),
       ),
     ),
-    AudioSource.uri(
+    AudioVideoSource.uri(
       Uri.parse(
           "https://s3.amazonaws.com/scifri-episodes/scifri20181123-episode.mp3"),
       tag: MediaItem(
@@ -50,7 +50,7 @@ class MyAppState extends State<MyApp> {
             "https://media.wnyc.org/i/1400/1400/l/80/1/ScienceFriday_WNYCStudios_1400.jpg"),
       ),
     ),
-    AudioSource.uri(
+    AudioVideoSource.uri(
       Uri.parse("https://s3.amazonaws.com/scifri-segments/scifri201711241.mp3"),
       tag: MediaItem(
         id: '${_nextMediaId++}',
@@ -60,7 +60,7 @@ class MyAppState extends State<MyApp> {
             "https://media.wnyc.org/i/1400/1400/l/80/1/ScienceFriday_WNYCStudios_1400.jpg"),
       ),
     ),
-    AudioSource.uri(
+    AudioVideoSource.uri(
       Uri.parse("asset:///audio/nature.mp3"),
       tag: MediaItem(
         id: '${_nextMediaId++}',
@@ -92,7 +92,7 @@ class MyAppState extends State<MyApp> {
       print('A stream error occurred: $e');
     });
     try {
-      await _player.setAudioSource(_playlist);
+      await _player.setSource(_playlist);
     } catch (e, stackTrace) {
       // Catch load errors: 404, invalid url ...
       print("Error loading playlist: $e");
@@ -273,7 +273,7 @@ class MyAppState extends State<MyApp> {
         floatingActionButton: FloatingActionButton(
           child: const Icon(Icons.add),
           onPressed: () {
-            _playlist.add(AudioSource.uri(
+            _playlist.add(AudioVideoSource.uri(
               Uri.parse("asset:///audio/nature.mp3"),
               tag: MediaItem(
                 id: '${_nextMediaId++}',

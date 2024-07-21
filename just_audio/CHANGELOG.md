@@ -300,9 +300,9 @@
 
 ## 0.6.2
 
-* Fix bugs related to the new setAudioSource method:
-  * When calling setAudioSource more than once
-  * When calling setAudioSource/load/play simultaneously
+* Fix bugs related to the new setSource method:
+  * When calling setSource more than once
+  * When calling setSource/load/play simultaneously
 
 ## 0.6.1
 
@@ -310,7 +310,7 @@
 
 ## 0.6.0
 
-* Breaking change: Replace load by setAudioSource.
+* Breaking change: Replace load by setSource.
 * Breaking change: Rename ProcessingState.none to idle.
 * Support custom shuffle order.
 * Fix bug dynamically adding to ConcatenatingAudioSource.

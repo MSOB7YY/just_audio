@@ -44,7 +44,7 @@ class MyAppState extends State<MyApp> with WidgetsBindingObserver {
     });
     // Try to load audio from a source and catch any errors.
     try {
-      await _player.setAudioSource(AudioSource.uri(
+      await _player.setSource(AudioVideoSource.uri(
           Uri.parse("https://stream-uk1.radioparadise.com/aac-320")));
     } catch (e) {
       print("Error loading audio source: $e");

@@ -310,16 +310,16 @@ class Html5AudioPlayer extends JustAudioPlayer {
   @override
   Future<SetShuffleOrderResponse> setShuffleOrder(
       SetShuffleOrderRequest request) async {
-    void internalSetShuffleOrder(AudioSourceMessage sourceMessage) {
+    void internalSetShuffleOrder(SourceMessage sourceMessage) {
       final audioSourcePlayer = _audioSourcePlayers[sourceMessage.id];
       if (audioSourcePlayer == null) return;
-      if (sourceMessage is ConcatenatingAudioSourceMessage &&
+      if (sourceMessage is ConcatenatingSourceMessage &&
           audioSourcePlayer is ConcatenatingAudioSourcePlayer) {
         audioSourcePlayer.setShuffleOrder(sourceMessage.shuffleOrder);
         for (var childMessage in sourceMessage.children) {
           internalSetShuffleOrder(childMessage);
         }
-      } else if (sourceMessage is LoopingAudioSourceMessage) {
+      } else if (sourceMessage is LoopingSourceMessage) {
         internalSetShuffleOrder(sourceMessage.child);
       }
     }
@@ -472,12 +472,12 @@ class Html5AudioPlayer extends JustAudioPlayer {
   }
 
   /// Converts a list of audio source messages to players.
-  List<AudioSourcePlayer> getAudioSources(List<AudioSourceMessage> messages) =>
+  List<AudioSourcePlayer> getAudioSources(List<SourceMessage> messages) =>
       messages.map((message) => getAudioSource(message)).toList();
 
   /// Converts an audio source message to a player, using the cache if it is
   /// already cached.
-  AudioSourcePlayer getAudioSource(AudioSourceMessage audioSourceMessage) {
+  AudioSourcePlayer getAudioSource(SourceMessage audioSourceMessage) {
     final id = audioSourceMessage.id;
     var audioSourcePlayer = _audioSourcePlayers[id];
     if (audioSourcePlayer == null) {
@@ -488,31 +488,31 @@ class Html5AudioPlayer extends JustAudioPlayer {
   }
 
   /// Converts an audio source message to a player.
-  AudioSourcePlayer decodeAudioSource(AudioSourceMessage audioSourceMessage) {
-    if (audioSourceMessage is ProgressiveAudioSourceMessage) {
+  AudioSourcePlayer decodeAudioSource(SourceMessage audioSourceMessage) {
+    if (audioSourceMessage is ProgressiveSourceMessage) {
       return ProgressiveAudioSourcePlayer(this, audioSourceMessage.id,
           Uri.parse(audioSourceMessage.uri), audioSourceMessage.headers);
-    } else if (audioSourceMessage is DashAudioSourceMessage) {
+    } else if (audioSourceMessage is DashSourceMessage) {
       return DashAudioSourcePlayer(this, audioSourceMessage.id,
           Uri.parse(audioSourceMessage.uri), audioSourceMessage.headers);
-    } else if (audioSourceMessage is HlsAudioSourceMessage) {
+    } else if (audioSourceMessage is HlsSourceMessage) {
       return HlsAudioSourcePlayer(this, audioSourceMessage.id,
           Uri.parse(audioSourceMessage.uri), audioSourceMessage.headers);
-    } else if (audioSourceMessage is ConcatenatingAudioSourceMessage) {
+    } else if (audioSourceMessage is ConcatenatingSourceMessage) {
       return ConcatenatingAudioSourcePlayer(
           this,
           audioSourceMessage.id,
           getAudioSources(audioSourceMessage.children),
           audioSourceMessage.useLazyPreparation,
           audioSourceMessage.shuffleOrder);
-    } else if (audioSourceMessage is ClippingAudioSourceMessage) {
+    } else if (audioSourceMessage is ClippingSourceMessage) {
       return ClippingAudioSourcePlayer(
           this,
           audioSourceMessage.id,
           getAudioSource(audioSourceMessage.child) as UriAudioSourcePlayer,
           audioSourceMessage.start,
           audioSourceMessage.end);
-    } else if (audioSourceMessage is LoopingAudioSourceMessage) {
+    } else if (audioSourceMessage is LoopingSourceMessage) {
       return LoopingAudioSourcePlayer(this, audioSourceMessage.id,
           getAudioSource(audioSourceMessage.child), audioSourceMessage.count);
     } else {
@@ -538,7 +538,7 @@ abstract class AudioSourcePlayer {
   List<int> get shuffleIndices;
 }
 
-/// A player for an [IndexedAudioSourceMessage].
+/// A player for an [IndexedSourceMessage].
 abstract class IndexedAudioSourcePlayer extends AudioSourcePlayer {
   IndexedAudioSourcePlayer(Html5AudioPlayer html5AudioPlayer, String id)
       : super(html5AudioPlayer, id);
@@ -579,7 +579,7 @@ abstract class IndexedAudioSourcePlayer extends AudioSourcePlayer {
   String toString() => "$runtimeType";
 }
 
-/// A player for an [UriAudioSourceMessage].
+/// A player for an [UriSourceMessage].
 abstract class UriAudioSourcePlayer extends IndexedAudioSourcePlayer {
   /// The URL to play.
   final Uri uri;
@@ -677,28 +677,28 @@ abstract class UriAudioSourcePlayer extends IndexedAudioSourcePlayer {
   }
 }
 
-/// A player for a [ProgressiveAudioSourceMessage].
+/// A player for a [ProgressiveSourceMessage].
 class ProgressiveAudioSourcePlayer extends UriAudioSourcePlayer {
   ProgressiveAudioSourcePlayer(Html5AudioPlayer html5AudioPlayer, String id,
       Uri uri, Map<String, String>? headers)
       : super(html5AudioPlayer, id, uri, headers);
 }
 
-/// A player for a [DashAudioSourceMessage].
+/// A player for a [DashSourceMessage].
 class DashAudioSourcePlayer extends UriAudioSourcePlayer {
   DashAudioSourcePlayer(Html5AudioPlayer html5AudioPlayer, String id, Uri uri,
       Map<String, String>? headers)
       : super(html5AudioPlayer, id, uri, headers);
 }
 
-/// A player for a [HlsAudioSourceMessage].
+/// A player for a [HlsSourceMessage].
 class HlsAudioSourcePlayer extends UriAudioSourcePlayer {
   HlsAudioSourcePlayer(Html5AudioPlayer html5AudioPlayer, String id, Uri uri,
       Map<String, String>? headers)
       : super(html5AudioPlayer, id, uri, headers);
 }
 
-/// A player for a [ConcatenatingAudioSourceMessage].
+/// A player for a [ConcatenatingSourceMessage].
 class ConcatenatingAudioSourcePlayer extends AudioSourcePlayer {
   /// The players for each child audio source.
   final List<AudioSourcePlayer> audioSourcePlayers;
@@ -764,7 +764,7 @@ class ConcatenatingAudioSourcePlayer extends AudioSourcePlayer {
   }
 }
 
-/// A player for a [ClippingAudioSourceMessage].
+/// A player for a [ClippingSourceMessage].
 class ClippingAudioSourcePlayer extends IndexedAudioSourcePlayer {
   final UriAudioSourcePlayer audioSourcePlayer;
   final Duration? start;
@@ -901,7 +901,7 @@ class ClippingAudioSourcePlayer extends IndexedAudioSourcePlayer {
 /// Reasons why playback of a clipping audio source may be interrupted.
 enum ClipInterruptReason { end, pause, seek }
 
-/// A player for a [LoopingAudioSourceMessage].
+/// A player for a [LoopingSourceMessage].
 class LoopingAudioSourcePlayer extends AudioSourcePlayer {
   /// The child audio source player to loop.
   final AudioSourcePlayer audioSourcePlayer;

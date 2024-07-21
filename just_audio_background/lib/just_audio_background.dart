@@ -328,7 +328,7 @@ class _PlayerAudioHandler extends BaseAudioHandler
     currentIndex: null,
     androidAudioSessionId: null,
   );
-  AudioSourceMessage? _source;
+  SourceMessage? _source;
   bool _playing = false;
   double _speed = 1.0;
   _Seeker? _seeker;
@@ -428,8 +428,7 @@ class _PlayerAudioHandler extends BaseAudioHandler
       audioSourceMessage: _source!,
       initialPosition: request.initialPosition,
       initialIndex: request.initialIndex,
-      videoOptions: request.videoOptions,
-      videoOnly: request.videoOnly,
+      videoRequest: request.videoRequest,
       keepOldVideoSource: request.keepOldVideoSource,
     ));
     return LoadResponse(duration: response.duration);
@@ -510,7 +509,7 @@ class _PlayerAudioHandler extends BaseAudioHandler
         : List.generate(sequence.length, (i) => i);
   }
 
-  List<IndexedAudioSourceMessage> get sequence => _source?.sequence ?? [];
+  List<IndexedSourceMessage> get sequence => _source?.sequence ?? [];
   List<int> get shuffleIndices => _shuffleIndices;
   List<int> get effectiveIndices => _effectiveIndices;
   List<int> get shuffleIndicesInv => _shuffleIndicesInv;
@@ -771,37 +770,37 @@ extension _PlaybackEventMessageExtension on PlaybackEventMessage {
       );
 }
 
-extension AudioSourceExtension on AudioSourceMessage {
-  ConcatenatingAudioSourceMessage? findCat(String id) {
+extension AudioSourceExtension on SourceMessage {
+  ConcatenatingSourceMessage? findCat(String id) {
     final self = this;
-    if (self is ConcatenatingAudioSourceMessage) {
+    if (self is ConcatenatingSourceMessage) {
       if (self.id == id) return self;
       return self.children
           .map((child) => child.findCat(id))
           .firstWhere((cat) => cat != null, orElse: () => null);
-    } else if (self is LoopingAudioSourceMessage) {
+    } else if (self is LoopingSourceMessage) {
       return self.child.findCat(id);
     } else {
       return null;
     }
   }
 
-  List<IndexedAudioSourceMessage> get sequence {
+  List<IndexedSourceMessage> get sequence {
     final self = this;
-    if (self is ConcatenatingAudioSourceMessage) {
+    if (self is ConcatenatingSourceMessage) {
       return self.children.expand((child) => child.sequence).toList();
-    } else if (self is LoopingAudioSourceMessage) {
+    } else if (self is LoopingSourceMessage) {
       return List.generate(self.count, (i) => self.child.sequence)
           .expand((sequence) => sequence)
           .toList();
     } else {
-      return [self as IndexedAudioSourceMessage];
+      return [self as IndexedSourceMessage];
     }
   }
 
   List<int> get shuffleIndices {
     final self = this;
-    if (self is ConcatenatingAudioSourceMessage) {
+    if (self is ConcatenatingSourceMessage) {
       var offset = 0;
       final childIndicesList = <List<int>>[];
       for (final child in self.children) {
@@ -815,7 +814,7 @@ extension AudioSourceExtension on AudioSourceMessage {
         indices.addAll(childIndicesList[index]);
       }
       return indices;
-    } else if (self is LoopingAudioSourceMessage) {
+    } else if (self is LoopingSourceMessage) {
       // TODO: This should combine indices of the children, like ConcatenatingAudioSource.
       // Also should be fixed in the plugin frontend.
       return List.generate(self.count, (i) => i);

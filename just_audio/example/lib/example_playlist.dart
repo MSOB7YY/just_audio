@@ -24,15 +24,15 @@ class MyApp extends StatefulWidget {
 
 class MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late AudioPlayer _player;
-  final _playlist = ConcatenatingAudioSource(children: [
+  final _playlist = ConcatenatingSource(children: [
     // Remove this audio source from the Windows and Linux version because it's not supported yet
     if (kIsWeb ||
         ![TargetPlatform.windows, TargetPlatform.linux]
             .contains(defaultTargetPlatform))
-      ClippingAudioSource(
+      ClippingSource(
         start: const Duration(seconds: 60),
         end: const Duration(seconds: 90),
-        child: AudioSource.uri(Uri.parse(
+        child: AudioVideoSource.uri(Uri.parse(
             "https://s3.amazonaws.com/scifri-episodes/scifri20181123-episode.mp3")),
         tag: AudioMetadata(
           album: "Science Friday",
@@ -41,7 +41,7 @@ class MyAppState extends State<MyApp> with WidgetsBindingObserver {
               "https://media.wnyc.org/i/1400/1400/l/80/1/ScienceFriday_WNYCStudios_1400.jpg",
         ),
       ),
-    AudioSource.uri(
+    AudioVideoSource.uri(
       Uri.parse(
           "https://s3.amazonaws.com/scifri-episodes/scifri20181123-episode.mp3"),
       tag: AudioMetadata(
@@ -51,7 +51,7 @@ class MyAppState extends State<MyApp> with WidgetsBindingObserver {
             "https://media.wnyc.org/i/1400/1400/l/80/1/ScienceFriday_WNYCStudios_1400.jpg",
       ),
     ),
-    AudioSource.uri(
+    AudioVideoSource.uri(
       Uri.parse("https://s3.amazonaws.com/scifri-segments/scifri201711241.mp3"),
       tag: AudioMetadata(
         album: "Science Friday",
@@ -60,7 +60,7 @@ class MyAppState extends State<MyApp> with WidgetsBindingObserver {
             "https://media.wnyc.org/i/1400/1400/l/80/1/ScienceFriday_WNYCStudios_1400.jpg",
       ),
     ),
-    AudioSource.uri(
+    AudioVideoSource.uri(
       Uri.parse("asset:///audio/nature.mp3"),
       tag: AudioMetadata(
         album: "Public Domain",
@@ -94,7 +94,7 @@ class MyAppState extends State<MyApp> with WidgetsBindingObserver {
     });
     try {
       // Preloading audio is not currently supported on Linux.
-      await _player.setAudioSource(_playlist,
+      await _player.setSource(_playlist,
           preload: kIsWeb || defaultTargetPlatform != TargetPlatform.linux);
     } catch (e) {
       // Catch load errors: 404, invalid url...
@@ -309,7 +309,7 @@ class MyAppState extends State<MyApp> with WidgetsBindingObserver {
         floatingActionButton: FloatingActionButton(
           child: const Icon(Icons.add),
           onPressed: () {
-            _playlist.add(AudioSource.uri(
+            _playlist.add(AudioVideoSource.uri(
               Uri.parse("asset:///audio/nature.mp3"),
               tag: AudioMetadata(
                 album: "Public Domain",

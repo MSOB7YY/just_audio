@@ -79,7 +79,7 @@ final playlist = ConcatenatingAudioSource(
 );
 
 // Load and play the playlist
-await player.setAudioSource(playlist, initialIndex: 0, initialPosition: Duration.zero);
+await player.setSource(playlist, initialIndex: 0, initialPosition: Duration.zero);
 await player.seekToNext();                     // Skip to the next item
 await player.seekToPrevious();                 // Skip to the previous item
 await player.seek(Duration.zero, index: 2);    // Skip to the start of track3.mp3
@@ -115,7 +115,7 @@ await AudioPlayer.clearAssetCache();
 
 // Download and cache audio while playing it (experimental)
 final audioSource = LockCachingAudioSource('https://foo.com/bar.mp3');
-await player.setAudioSource(audioSource);
+await player.setSource(audioSource);
 // Delete the cached file
 await audioSource.clearCache();
 ```
@@ -144,7 +144,7 @@ class MyCustomSource extends StreamAudioSource {
   }
 }
 
-await player.setAudioSource(MyCustomSource());
+await player.setSource(MyCustomSource());
 player.play();
 ```
 
@@ -424,40 +424,40 @@ Please also consider pressing the thumbs up button at the top of [this page](htt
 
 ## Platform support
 
-| Feature                        | Android | iOS | macOS | Web | Windows | Linux |
-| ------------------------------ | :-----: | :-: | :---: | :-: | :-----: | :---: |
-| read from URL                  | ✅      | ✅  | ✅    | ✅  | ✅      | ✅    |
-| read from file                 | ✅      | ✅  | ✅    | ✅  | ✅      | ✅    |
-| read from asset                | ✅      | ✅  | ✅    | ✅  | ✅      | ✅    |
-| read from byte stream          | ✅      | ✅  | ✅    | ✅  | ✅      | ✅    |
-| request headers                | ✅      | ✅  | ✅    |     | ✅      | ✅    |
-| DASH                           | ✅      |     |       |     | ✅      | ✅    |
-| HLS                            | ✅      | ✅  | ✅    |     | ✅      | ✅    |
-| ICY metadata                   | ✅      | ✅  | ✅    |     |         |       |
-| buffer status/position         | ✅      | ✅  | ✅    | ✅  | ✅      | ✅    |
-| play/pause/seek                | ✅      | ✅  | ✅    | ✅  | ✅      | ✅    |
-| set volume/speed               | ✅      | ✅  | ✅    | ✅  | ✅      | ✅    |
-| clip audio                     | ✅      | ✅  | ✅    | ✅  |         | ✅    |
-| playlists                      | ✅      | ✅  | ✅    | ✅  | ✅      | ✅    |
-| looping/shuffling              | ✅      | ✅  | ✅    | ✅  | ✅      | ✅    |
-| compose audio                  | ✅      | ✅  | ✅    | ✅  |         | ✅    |
-| gapless playback               | ✅      | ✅  | ✅    |     | ✅      | ✅    |
-| report player errors           | ✅      | ✅  | ✅    | ✅  | ✅      | ✅    |
-| handle phonecall interruptions | ✅      | ✅  |       |     |         |       |
-| buffering/loading options      | ✅      | ✅  | ✅    |     |         |       |
-| set pitch                      | ✅      |     |       |     |         |       |
-| skip silence                   | ✅      |     |       |     |         |       |
-| equalizer                      | ✅      |     |       |     |         | ✅    |
-| volume boost                   | ✅      |     |       |     |         | ✅    |
+| Feature                        | Android |  iOS  | macOS |  Web  | Windows | Linux |
+| ------------------------------ | :-----: | :---: | :---: | :---: | :-----: | :---: |
+| read from URL                  |    ✅    |   ✅   |   ✅   |   ✅   |    ✅    |   ✅   |
+| read from file                 |    ✅    |   ✅   |   ✅   |   ✅   |    ✅    |   ✅   |
+| read from asset                |    ✅    |   ✅   |   ✅   |   ✅   |    ✅    |   ✅   |
+| read from byte stream          |    ✅    |   ✅   |   ✅   |   ✅   |    ✅    |   ✅   |
+| request headers                |    ✅    |   ✅   |   ✅   |       |    ✅    |   ✅   |
+| DASH                           |    ✅    |       |       |       |    ✅    |   ✅   |
+| HLS                            |    ✅    |   ✅   |   ✅   |       |    ✅    |   ✅   |
+| ICY metadata                   |    ✅    |   ✅   |   ✅   |       |         |       |
+| buffer status/position         |    ✅    |   ✅   |   ✅   |   ✅   |    ✅    |   ✅   |
+| play/pause/seek                |    ✅    |   ✅   |   ✅   |   ✅   |    ✅    |   ✅   |
+| set volume/speed               |    ✅    |   ✅   |   ✅   |   ✅   |    ✅    |   ✅   |
+| clip audio                     |    ✅    |   ✅   |   ✅   |   ✅   |         |   ✅   |
+| playlists                      |    ✅    |   ✅   |   ✅   |   ✅   |    ✅    |   ✅   |
+| looping/shuffling              |    ✅    |   ✅   |   ✅   |   ✅   |    ✅    |   ✅   |
+| compose audio                  |    ✅    |   ✅   |   ✅   |   ✅   |         |   ✅   |
+| gapless playback               |    ✅    |   ✅   |   ✅   |       |    ✅    |   ✅   |
+| report player errors           |    ✅    |   ✅   |   ✅   |   ✅   |    ✅    |   ✅   |
+| handle phonecall interruptions |    ✅    |   ✅   |       |       |         |       |
+| buffering/loading options      |    ✅    |   ✅   |   ✅   |       |         |       |
+| set pitch                      |    ✅    |       |       |       |         |       |
+| skip silence                   |    ✅    |       |       |       |         |       |
+| equalizer                      |    ✅    |       |       |       |         |   ✅   |
+| volume boost                   |    ✅    |       |       |       |         |   ✅   |
 
 ## Experimental features
 
-| Feature                                                                            | Android   | iOS     | macOS   | Web     |
-| -------                                                                            | :-------: | :-----: | :-----: | :-----: |
-| Simultaneous downloading+caching                                                   | ✅        | ✅      | ✅      |         |
-| Waveform visualizer (See [#97](https://github.com/ryanheise/just_audio/issues/97)) | ✅        | ✅      |         |         |
-| FFT visualizer (See [#97](https://github.com/ryanheise/just_audio/issues/97))      | ✅        | ✅      | ✅      |         |
-| Background                                                                         | ✅        | ✅      | ✅      | ✅      |
+| Feature                                                                            | Android |  iOS  | macOS |  Web  |
+| ---------------------------------------------------------------------------------- | :-----: | :---: | :---: | :---: |
+| Simultaneous downloading+caching                                                   |    ✅    |   ✅   |   ✅   |       |
+| Waveform visualizer (See [#97](https://github.com/ryanheise/just_audio/issues/97)) |    ✅    |   ✅   |       |       |
+| FFT visualizer (See [#97](https://github.com/ryanheise/just_audio/issues/97))      |    ✅    |   ✅   |   ✅   |       |
+| Background                                                                         |    ✅    |   ✅   |   ✅   |   ✅   |
 
 Please consider reporting any bugs you encounter [here](https://github.com/ryanheise/just_audio/issues) or submitting pull requests [here](https://github.com/ryanheise/just_audio/pulls).
 

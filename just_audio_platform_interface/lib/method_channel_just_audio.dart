@@ -67,7 +67,7 @@ class MethodChannelAudioPlayer extends AudioPlayerPlatform {
   }
 
   @override
-  Future<void> setVideo(VideoOptions? video) async {
+  Future<void> setVideo(VideoLoadRequest? video) async {
     await _channel.invokeMethod('setVideo', {'video': video?.toMap()});
   }
 

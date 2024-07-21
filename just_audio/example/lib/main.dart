@@ -44,16 +44,19 @@ class MyAppState extends State<MyApp> {
     // Try to load audio from a source and catch any errors.
     try {
       // AAC example: https://dl.espressif.com/dl/audio/ff-16b-2c-44100hz.aac
-      await _player.setAudioSource(
-        AudioSource.file(
+      await _player.setSource(
+        AudioVideoSource.file(
             '/storage/emulated/0/Music/video test/5UUO_NmnSFc_130422.m4a'),
-        videoOptions: VideoOptions(
+        videoOptions: VideoSourceOptions(
           // source: '/storage/emulated/0/Music/video test/5UUO_NmnSFc_480p.mp4',
-          source:
-              'https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_5mb.mp4',
-          enableCaching: true,
-          cacheKey: 'big_buck_bunny',
-          cacheDirectory: Directory('/storage/emulated/0/Music/'),
+          source: LockCachingVideoSource(
+            Uri.parse(
+                'https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_5mb.mp4'),
+            cacheFile:
+                File('/storage/emulated/0/Music/big_buck_bunny_cached.mp4'),
+          ),
+          loop: false,
+          videoOnly: false,
         ),
       );
     } catch (e) {
@@ -73,13 +76,14 @@ class MyAppState extends State<MyApp> {
     });
 
     try {
-      await _player2.setAudioSource(
-        AudioSource.file('/storage/emulated/0/Music/video test/a2.m4a'),
-        videoOptions: const VideoOptions(
-          source: '/storage/emulated/0/Music/video test/v2.mp4',
-          enableCaching: true,
-          cacheKey: 'v2',
-          cacheDirectory: null,
+      await _player2.setSource(
+        AudioVideoSource.file('/storage/emulated/0/Music/video test/a2.m4a'),
+        videoOptions: VideoSourceOptions(
+          source: AudioVideoSource.file(
+            '/storage/emulated/0/Music/video test/v2.mp4',
+          ),
+          loop: false,
+          videoOnly: false,
         ),
       );
     } catch (e) {
@@ -163,11 +167,12 @@ class MyAppState extends State<MyApp> {
                 ElevatedButton(
                   onPressed: () {
                     _player.setVideo(
-                      const VideoOptions(
-                        source: '/storage/emulated/0/Music/video test/v2.mp4',
-                        enableCaching: true,
-                        cacheKey: 'v2',
-                        cacheDirectory: null,
+                      VideoSourceOptions(
+                        source: AudioVideoSource.file(
+                          '/storage/emulated/0/Music/video test/v2.mp4',
+                        ),
+                        loop: false,
+                        videoOnly: false,
                       ),
                     );
                   },
@@ -176,16 +181,36 @@ class MyAppState extends State<MyApp> {
                 ElevatedButton(
                   onPressed: () {
                     _player.setVideo(
-                      const VideoOptions(
-                        source:
-                            '/storage/emulated/0/Music/video test/5UUO_NmnSFc_480p.mp4',
-                        enableCaching: true,
-                        cacheKey: '5UUO_NmnSFc_480p',
-                        cacheDirectory: null,
+                      VideoSourceOptions(
+                        source: AudioVideoSource.file(
+                            '/storage/emulated/0/Music/video test/5UUO_NmnSFc_480p.mp4'),
+                        loop: false,
+                        videoOnly: false,
                       ),
                     );
                   },
                   child: const Text('set video 2'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final vid = VideoSourceOptions(
+                      source: LockCachingVideoSource(
+                        Uri.parse(
+                            'https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_5mb.mp4'),
+                        cacheFile: File(
+                            '/storage/emulated/0/Download/big_buck_bunny_cached.mp4'),
+                      ),
+                      loop: false,
+                      videoOnly: false,
+                    );
+                    _player2.setVideo(vid);
+                    // _player2.setSource(
+                    //   AudioVideoSource.file(
+                    //       '/storage/emulated/0/Music/_uHTZAyYFEg_130506.m4a'),
+                    //   videoOptions: vid,
+                    // );
+                  },
+                  child: const Text('set video https'),
                 ),
                 ElevatedButton(
                   onPressed: () {
@@ -194,38 +219,39 @@ class MyAppState extends State<MyApp> {
                   child: const Text('set video none'),
                 ),
                 // -- video 2
-                // StreamBuilder<VideoInfoData>(
-                //   stream: _player2.videoInfoStream,
-                //   builder: (context, snapshot) {
-                //     final info = snapshot.data;
-                //     // inspect(info);
-                //     final id = info?.textureId;
-                //     if (info == null || id == null || id == -1) {
-                //       return const Text('no video');
-                //     }
-                //     final aspectRatio = info.height / info.width;
-                //     final ctxWidth = MediaQuery.of(context).size.width;
-                //     return SizedBox(
-                //       width: ctxWidth,
-                //       height: ctxWidth * aspectRatio,
-                //       child: Texture(textureId: id),
-                //     );
-                //   },
-                // ),
-                // ControlButtons(_player2),
-                // StreamBuilder<PositionData>(
-                //   stream: _positionDataStream2,
-                //   builder: (context, snapshot) {
-                //     final positionData = snapshot.data;
-                //     return SeekBar(
-                //       duration: positionData?.duration ?? Duration.zero,
-                //       position: positionData?.position ?? Duration.zero,
-                //       bufferedPosition:
-                //           positionData?.bufferedPosition ?? Duration.zero,
-                //       onChangeEnd: _player2.seek,
-                //     );
-                //   },
-                // ),
+                StreamBuilder<VideoInfoData>(
+                  stream: _player2.videoInfoStream,
+                  builder: (context, snapshot) {
+                    final info = snapshot.data;
+                    // inspect(info);
+                    print('----------> ${info?.height}');
+                    final id = info?.textureId;
+                    if (info == null || id == null || id == -1) {
+                      return const Text('no video');
+                    }
+                    final aspectRatio = info.height / info.width;
+                    final ctxWidth = MediaQuery.of(context).size.width;
+                    return SizedBox(
+                      width: ctxWidth,
+                      height: ctxWidth * aspectRatio,
+                      child: Texture(textureId: id),
+                    );
+                  },
+                ),
+                ControlButtons(_player2),
+                StreamBuilder<PositionData>(
+                  stream: _positionDataStream2,
+                  builder: (context, snapshot) {
+                    final positionData = snapshot.data;
+                    return SeekBar(
+                      duration: positionData?.duration ?? Duration.zero,
+                      position: positionData?.position ?? Duration.zero,
+                      bufferedPosition:
+                          positionData?.bufferedPosition ?? Duration.zero,
+                      onChangeEnd: _player2.seek,
+                    );
+                  },
+                ),
               ],
             ),
           ),

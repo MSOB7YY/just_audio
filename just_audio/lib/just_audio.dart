@@ -14,9 +14,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
 
-export 'package:just_audio_platform_interface/just_audio_platform_interface.dart'
-    show VideoOptions, ByteSize;
-
 typedef VideoInfoData = VideoDataMessage;
 
 const _uuid = Uuid();
@@ -101,11 +98,10 @@ class AudioPlayer {
 
   final String _id;
   final _proxy = _ProxyHttpServer();
-  AudioSource? _audioSource;
-  VideoOptions? _videoOptions;
-  bool _videoOnly = false;
+  AudioVideoSource? _audioSource;
+  VideoSourceOptions? _videoOptions;
   bool _keepOldVideoSource = false;
-  final Map<String, AudioSource> _audioSources = {};
+  final Map<String, AudioVideoSource> _audioVideoSources = {};
   bool _disposed = false;
   _InitialSeekValues? _initialSeekValues;
   final AudioPipeline _audioPipeline;
@@ -123,7 +119,7 @@ class AudioPlayer {
   final _bufferedPositionSubject = BehaviorSubject<Duration>();
   final _icyMetadataSubject = BehaviorSubject<IcyMetadata?>();
   final _playerStateSubject = BehaviorSubject<PlayerState>();
-  final _sequenceSubject = BehaviorSubject<List<IndexedAudioSource>?>();
+  final _sequenceSubject = BehaviorSubject<List<IndexedSource>?>();
   final _shuffleIndicesSubject = BehaviorSubject<List<int>?>();
   final _shuffleIndicesInv = <int>[];
   final _currentIndexSubject = BehaviorSubject<int?>(sync: true);
@@ -241,7 +237,7 @@ class AudioPlayer {
         .map((event) => event.androidAudioSessionId)
         .distinct()
         .handleError((Object err, StackTrace stackTrace) {/* noop */}));
-    _sequenceStateSubject.addStream(Rx.combineLatest5<List<IndexedAudioSource>?,
+    _sequenceStateSubject.addStream(Rx.combineLatest5<List<IndexedSource>?,
         List<int>?, int?, bool, LoopMode, SequenceState?>(
       sequenceStream,
       shuffleIndicesStream,
@@ -356,11 +352,11 @@ class AudioPlayer {
     }
   }
 
-  /// The previously set [AudioSource], if any.
-  AudioSource? get audioSource => _audioSource;
+  /// The previously set [AudioVideoSource], if any.
+  AudioVideoSource? get audioSource => _audioSource;
 
-  /// The previously set [VideoOptions], if any.
-  VideoOptions? get videoOptions => _videoOptions;
+  /// The previously set [VideoSourceOptions], if any.
+  VideoSourceOptions? get videoOptions => _videoOptions;
 
   /// The currently active video texture id.
   Stream<VideoInfoData> get videoInfoStream => _videoInfoSubject.stream;
@@ -448,11 +444,10 @@ class AudioPlayer {
 
   /// The current sequence of indexed audio sources, or `null` if no audio
   /// source is set.
-  List<IndexedAudioSource>? get sequence => _sequenceSubject.nvalue;
+  List<IndexedSource>? get sequence => _sequenceSubject.nvalue;
 
   /// A stream broadcasting the current sequence of indexed audio sources.
-  Stream<List<IndexedAudioSource>?> get sequenceStream =>
-      _sequenceSubject.stream;
+  Stream<List<IndexedSource>?> get sequenceStream => _sequenceSubject.stream;
 
   /// The current shuffled sequence of indexed audio sources, or `null` if no
   /// audio source is set.
@@ -462,7 +457,7 @@ class AudioPlayer {
   /// sources.
   Stream<List<int>?> get shuffleIndicesStream => _shuffleIndicesSubject.stream;
 
-  //List<IndexedAudioSource> get _effectiveSequence =>
+  //List<IndexedSource> get _effectiveSequence =>
   //    shuffleModeEnabled ? shuffleIndices : sequence;
 
   /// The index of the current item, or `null` if either no audio source is set,
@@ -673,18 +668,18 @@ class AudioPlayer {
   /// This is equivalent to:
   ///
   /// ```
-  /// setAudioSource(AudioSource.uri(Uri.parse(url), headers: headers),
+  /// setSource(Source.uri(Uri.parse(url), headers: headers),
   ///     initialPosition: Duration.zero, preload: true);
   /// ```
   ///
-  /// See [setAudioSource] for a detailed explanation of the options.
+  /// See [setSource] for a detailed explanation of the options.
   Future<Duration?> setUrl(
     String url, {
     Map<String, String>? headers,
     Duration? initialPosition,
     bool preload = true,
   }) =>
-      setAudioSource(AudioSource.uri(Uri.parse(url), headers: headers),
+      setSource(AudioVideoSource.uri(Uri.parse(url), headers: headers),
           initialPosition: initialPosition, preload: preload);
 
   /// Convenience method to set the audio source to a file, preloaded by
@@ -693,17 +688,17 @@ class AudioPlayer {
   /// This is equivalent to:
   ///
   /// ```
-  /// setAudioSource(AudioSource.uri(Uri.file(filePath)),
+  /// setSource(Source.uri(Uri.file(filePath)),
   ///     initialPosition: Duration.zero, preload: true);
   /// ```
   ///
-  /// See [setAudioSource] for a detailed explanation of the options.
+  /// See [setSource] for a detailed explanation of the options.
   Future<Duration?> setFilePath(
     String filePath, {
     Duration? initialPosition,
     bool preload = true,
   }) =>
-      setAudioSource(AudioSource.file(filePath),
+      setSource(AudioVideoSource.file(filePath),
           initialPosition: initialPosition, preload: preload);
 
   /// Convenience method to set the audio source to an asset, preloaded by
@@ -712,22 +707,22 @@ class AudioPlayer {
   /// For assets within the same package, this is equivalent to:
   ///
   /// ```
-  /// setAudioSource(AudioSource.uri(Uri.parse('asset:///$assetPath')),
+  /// setSource(Source.uri(Uri.parse('asset:///$assetPath')),
   ///     initialPosition: Duration.zero, preload: true);
   /// ```
   ///
   /// If the asset is to be loaded from a different package, the [package]
   /// parameter must be given to specify the package name.
   ///
-  /// See [setAudioSource] for a detailed explanation of the options.
+  /// See [setSource] for a detailed explanation of the options.
   Future<Duration?> setAsset(
     String assetPath, {
     String? package,
     bool preload = true,
     Duration? initialPosition,
   }) =>
-      setAudioSource(
-        AudioSource.asset(assetPath, package: package),
+      setSource(
+        AudioVideoSource.asset(assetPath, package: package),
         initialPosition: initialPosition,
         preload: preload,
       );
@@ -753,13 +748,12 @@ class AudioPlayer {
   /// * [PlayerInterruptedException] if another audio source was loaded before
   /// this call completed or the player was stopped or disposed of before the
   /// call completed.
-  Future<Duration?> setAudioSource(
-    AudioSource source, {
+  Future<Duration?> setSource(
+    AudioVideoSource source, {
     bool preload = true,
     int? initialIndex,
     Duration? initialPosition,
-    VideoOptions? videoOptions,
-    bool videoOnly = false,
+    VideoSourceOptions? videoOptions,
     bool keepOldVideoSource = false,
   }) async {
     if (_disposed) return null;
@@ -771,7 +765,6 @@ class AudioPlayer {
         updatePosition: initialPosition ?? Duration.zero));
     _audioSource = source;
     _videoOptions = videoOptions;
-    _videoOnly = videoOnly;
     _keepOldVideoSource = keepOldVideoSource;
     _broadcastSequence();
     Duration? duration;
@@ -797,7 +790,7 @@ class AudioPlayer {
   Future<Duration?> load() async {
     if (_disposed) return null;
     if (_audioSource == null) {
-      throw Exception('Must set AudioSource before loading');
+      throw Exception('Must set Source before loading');
     }
     if (_active) {
       final initialSeekValues = _initialSeekValues;
@@ -805,9 +798,8 @@ class AudioPlayer {
       return await _load(
         await _platform,
         _audioSource!,
+        _videoOptions,
         initialSeekValues: initialSeekValues,
-        videoOptions: _videoOptions,
-        videoOnly: _videoOnly,
         keepOldVideoSource: _keepOldVideoSource,
       );
     } else {
@@ -817,9 +809,17 @@ class AudioPlayer {
   }
 
   /// Set a video source, use null to disable video.
-  /// This doesn't affect [setAudioSource].
-  Future<void> setVideo(VideoOptions? video) async {
-    return await (await _platform).setVideo(video);
+  /// This doesn't affect [setSource].
+  Future<void> setVideo(VideoSourceOptions? video) async {
+    return await (await _platform).setVideo(
+      video == null
+          ? null
+          : VideoLoadRequest(
+              videoSourceMessage: video.source._toMessage(),
+              videoLoop: video.loop,
+              videoOnly: video.videoOnly,
+            ),
+    );
   }
 
   void _broadcastSequence() {
@@ -844,16 +844,15 @@ class AudioPlayer {
     }
   }
 
-  void _registerAudioSource(AudioSource source) {
-    _audioSources[source._id] = source;
+  void _registerSource(AudioVideoSource source) {
+    _audioVideoSources[source._id] = source;
   }
 
   Future<Duration?> _load(
     AudioPlayerPlatform platform,
-    AudioSource source, {
+    AudioVideoSource audioSource,
+    VideoSourceOptions? videoSource, {
     _InitialSeekValues? initialSeekValues,
-    required VideoOptions? videoOptions,
-    required bool videoOnly,
     required bool keepOldVideoSource,
   }) async {
     final activationNumber = _activationCount;
@@ -865,16 +864,23 @@ class AudioPlayer {
     }
 
     try {
-      await source._setup(this);
+      await audioSource._setup(this);
+      await videoSource?.source._setup(this);
       checkInterruption();
-      source._shuffle(initialIndex: initialSeekValues?.index ?? 0);
+      audioSource._shuffle(initialIndex: initialSeekValues?.index ?? 0);
+      videoSource?.source._shuffle(initialIndex: initialSeekValues?.index ?? 0);
       _broadcastSequence();
       final response = await platform.load(LoadRequest(
-        audioSourceMessage: source._toMessage(),
+        audioSourceMessage: audioSource._toMessage(),
+        videoRequest: videoSource == null
+            ? null
+            : VideoLoadRequest(
+                videoSourceMessage: videoSource.source._toMessage(),
+                videoLoop: videoSource.loop,
+                videoOnly: videoSource.videoOnly,
+              ),
         initialPosition: initialSeekValues?.position,
         initialIndex: initialSeekValues?.index,
-        videoOptions: videoOptions,
-        videoOnly: videoOnly,
         keepOldVideoSource: keepOldVideoSource,
       ));
       final duration = response.duration;
@@ -903,10 +909,10 @@ class AudioPlayer {
     }
   }
 
-  /// Clips the current [AudioSource] to the given [start] and [end]
+  /// Clips the current [AudioVideoSource] to the given [start] and [end]
   /// timestamps. If [start] is null, it will be reset to the start of the
-  /// original [AudioSource]. If [end] is null, it will be reset to the end of
-  /// the original [AudioSource]. This method cannot be called from the
+  /// original [AudioVideoSource]. If [end] is null, it will be reset to the end of
+  /// the original [AudioVideoSource]. This method cannot be called from the
   /// [ProcessingState.idle] state.
   Future<Duration?> setClip({Duration? start, Duration? end}) async {
     if (_disposed) return null;
@@ -915,13 +921,12 @@ class AudioPlayer {
       await _platform,
       start == null && end == null
           ? _audioSource!
-          : ClippingAudioSource(
-              child: _audioSource as UriAudioSource,
+          : ClippingSource(
+              child: _audioSource as UriSource,
               start: start,
               end: end,
             ),
-      videoOptions: _videoOptions,
-      videoOnly: _videoOnly,
+      _videoOptions,
       keepOldVideoSource: _keepOldVideoSource,
     );
     return duration;
@@ -949,7 +954,7 @@ class AudioPlayer {
     if (playing) return;
     _playInterrupted = false;
     // Broadcast to clients immediately, but revert to false if we fail to
-    // activate the audio session. This allows setAudioSource to be aware of a
+    // activate the audio session. This allows setSource to be aware of a
     // prior play request.
     _playbackEvent = _playbackEvent.copyWith(
       updatePosition: position,
@@ -1102,8 +1107,8 @@ class AudioPlayer {
             enabled ? ShuffleModeMessage.all : ShuffleModeMessage.none));
   }
 
-  /// Recursively shuffles the children of the currently loaded [AudioSource].
-  /// Each [ConcatenatingAudioSource] will be shuffled according to its
+  /// Recursively shuffles the children of the currently loaded [AudioVideoSource].
+  /// Each [ConcatenatingSource] will be shuffled according to its
   /// configured [ShuffleOrder].
   Future<void> shuffle() async {
     if (_disposed) return;
@@ -1149,7 +1154,7 @@ class AudioPlayer {
   }
 
   /// Seeks to a particular [position]. If a composition of multiple
-  /// [AudioSource]s has been loaded, you may also specify [index] to seek to a
+  /// [AudioVideoSource]s has been loaded, you may also specify [index] to seek to a
   /// particular item within that sequence. This method has no effect unless
   /// an audio source has been loaded.
   ///
@@ -1229,10 +1234,10 @@ class AudioPlayer {
       _idlePlatform = null;
     }
     _audioSource = null;
-    for (var s in _audioSources.values) {
+    for (var s in _audioVideoSources.values) {
       s._dispose();
     }
-    _audioSources.clear();
+    _audioVideoSources.clear();
     _proxy.stop();
     await _durationSubject.close();
     await _loopModeSubject.close();
@@ -1372,10 +1377,10 @@ class AudioPlayer {
         }
       }, onError: _playbackEventSubject.addError);
 
-      _videoDataSubscription =
-          platform.videoDataMessageStream.listen((message) {
-        _videoInfoSubject.add(message);
-      });
+      _videoDataSubscription = platform.videoDataMessageStream.listen(
+        _videoInfoSubject.add,
+        onError: _videoInfoSubject.addError,
+      );
     }
 
     Future<AudioPlayerPlatform> setPlatform() async {
@@ -1490,10 +1495,8 @@ class AudioPlayer {
           final initialSeekValues = _initialSeekValues ??
               _InitialSeekValues(position: position, index: currentIndex);
           _initialSeekValues = null;
-          final duration = await _load(platform, _audioSource!,
+          final duration = await _load(platform, _audioSource!, _videoOptions,
               initialSeekValues: initialSeekValues,
-              videoOptions: _videoOptions,
-              videoOnly: _videoOnly,
               keepOldVideoSource: _keepOldVideoSource);
           if (checkInterruption()) return platform;
           durationCompleter.complete(duration);
@@ -1665,10 +1668,10 @@ class PlaybackEvent {
 
 /// Enumerates the different processing states of a player.
 enum ProcessingState {
-  /// The player has not loaded an [AudioSource].
+  /// The player has not loaded an [AudioVideoSource].
   idle,
 
-  /// The player is loading an [AudioSource].
+  /// The player is loading an [AudioVideoSource].
   loading,
 
   /// The player is buffering audio and unable to play.
@@ -1808,8 +1811,8 @@ class IcyMetadata {
 /// `sequence.length`. If `sequence.length` is 0, then [currentIndex] is also
 /// 0.
 class SequenceState {
-  /// The sequence of the current [AudioSource].
-  final List<IndexedAudioSource> sequence;
+  /// The sequence of the current [AudioVideoSource].
+  final List<IndexedSource> sequence;
 
   /// The index of the current source in the sequence.
   final int currentIndex;
@@ -1827,12 +1830,12 @@ class SequenceState {
       this.shuffleModeEnabled, this.loopMode);
 
   /// The current source in the sequence.
-  IndexedAudioSource? get currentSource =>
+  IndexedSource? get currentSource =>
       sequence.isEmpty ? null : sequence[currentIndex];
 
   /// The effective sequence. This is equivalent to [sequence]. If
   /// [shuffleModeEnabled] is true, this is modulated by [shuffleIndices].
-  List<IndexedAudioSource> get effectiveSequence => shuffleModeEnabled
+  List<IndexedSource> get effectiveSequence => shuffleModeEnabled
       ? shuffleIndices.map((i) => sequence[i]).toList()
       : sequence;
 }
@@ -2016,9 +2019,9 @@ class _ProxyHttpServer {
   /// [start] has completed.
   int get port => _server.port;
 
-  /// Register a [UriAudioSource] to be served through this proxy. This may be
+  /// Register a [UriSource] to be served through this proxy. This may be
   /// called only after [start] has completed.
-  Uri addUriAudioSource(UriAudioSource source) {
+  Uri addUriSource(UriSource source) {
     final uri = source.uri;
     final headers = <String, String>{};
     if (source.headers != null) {
@@ -2037,16 +2040,16 @@ class _ProxyHttpServer {
     );
   }
 
-  /// Register a [StreamAudioSource] to be served through this proxy. This may
+  /// Register a [StreamSource] to be served through this proxy. This may
   /// be called only after [start] has completed.
-  Uri addStreamAudioSource(StreamAudioSource source) {
+  Uri addStreamSource(StreamSource source) {
     final uri = _sourceUri(source);
     final path = _requestKey(uri);
     _handlerMap[path] = _proxyHandlerForSource(source);
     return uri;
   }
 
-  Uri _sourceUri(StreamAudioSource source) => Uri.http(
+  Uri _sourceUri(StreamSource source) => Uri.http(
       '${InternetAddress.loopbackIPv4.address}:$port', '/id/${source._id}');
 
   /// A unique key for each request that can be processed by this proxy,
@@ -2137,14 +2140,32 @@ class _HttpRangeResponse {
   String get header => 'bytes $start-$end/${fullLength?.toString() ?? "*"}';
 }
 
+class VideoSourceOptions {
+  final AudioVideoSource source;
+  final bool videoOnly;
+  final bool loop;
+
+  const VideoSourceOptions({
+    required this.source,
+    required this.videoOnly,
+    required this.loop,
+  });
+
+  Map<dynamic, dynamic> toMap() => {
+        'source': source._toMessage(),
+        'videoOnly': videoOnly,
+        'loop': loop,
+      };
+}
+
 /// Specifies a source of audio to be played. Audio sources are composable
-/// using the subclasses of this class. The same [AudioSource] instance should
+/// using the subclasses of this class. The same [AudioVideoSource] instance should
 /// not be used simultaneously by more than one [AudioPlayer].
-abstract class AudioSource {
+abstract class AudioVideoSource {
   final String _id;
   AudioPlayer? _player;
 
-  /// Creates an [AudioSource] from a [Uri] with optional headers by
+  /// Creates an [AudioVideoSource] from a [Uri] with optional headers by
   /// attempting to guess the type of stream. On iOS, this uses Apple's SDK to
   /// automatically detect the stream type. On Android, the type of stream will
   /// be guessed from the extension.
@@ -2152,22 +2173,21 @@ abstract class AudioSource {
   /// If you are loading DASH or HLS streams that do not have standard "mpd" or
   /// "m3u8" extensions in their URIs, this method will fail to detect the
   /// stream type on Android. If you know in advance what type of audio stream
-  /// it is, you should instantiate [DashAudioSource] or [HlsAudioSource]
+  /// it is, you should instantiate [DashSource] or [HlsSource]
   /// directly.
   ///
   /// If headers are set, just_audio will create a cleartext local HTTP proxy on
   /// your device to forward HTTP requests with headers included.
-  static UriAudioSource uri(Uri uri,
-      {Map<String, String>? headers, dynamic tag}) {
+  static UriSource uri(Uri uri, {Map<String, String>? headers, dynamic tag}) {
     bool hasExtension(Uri uri, String extension) =>
         uri.path.toLowerCase().endsWith('.$extension') ||
         uri.fragment.toLowerCase().endsWith('.$extension');
     if (hasExtension(uri, 'mpd')) {
-      return DashAudioSource(uri, headers: headers, tag: tag);
+      return DashSource(uri, headers: headers, tag: tag);
     } else if (hasExtension(uri, 'm3u8')) {
-      return HlsAudioSource(uri, headers: headers, tag: tag);
+      return HlsSource(uri, headers: headers, tag: tag);
     } else {
-      return ProgressiveAudioSource(uri, headers: headers, tag: tag);
+      return ProgressiveSource(uri, headers: headers, tag: tag);
     }
   }
 
@@ -2176,10 +2196,10 @@ abstract class AudioSource {
   /// This is equivalent to:
   ///
   /// ```
-  /// AudioSource.uri(Uri.file(filePath));
+  /// Source.uri(Uri.file(filePath));
   /// ```
-  static UriAudioSource file(String filePath, {dynamic tag}) {
-    return AudioSource.uri(Uri.file(filePath), tag: tag);
+  static UriSource file(String filePath, {dynamic tag}) {
+    return AudioVideoSource.uri(Uri.file(filePath), tag: tag);
   }
 
   /// Convenience method to create an audio source for an asset.
@@ -2187,24 +2207,23 @@ abstract class AudioSource {
   /// For assets within the same package, this is equivalent to:
   ///
   /// ```
-  /// AudioSource.uri(Uri.parse('asset:///$assetPath'));
+  /// Source.uri(Uri.parse('asset:///$assetPath'));
   /// ```
   ///
   /// If the asset is to be loaded from a different package, the [package]
   /// parameter must be given to specify the package name.
-  static UriAudioSource asset(String assetPath,
-      {String? package, dynamic tag}) {
+  static UriSource asset(String assetPath, {String? package, dynamic tag}) {
     final keyName =
         package == null ? assetPath : 'packages/$package/$assetPath';
-    return AudioSource.uri(Uri.parse('asset:///$keyName'), tag: tag);
+    return AudioVideoSource.uri(Uri.parse('asset:///$keyName'), tag: tag);
   }
 
-  AudioSource() : _id = _uuid.v4();
+  AudioVideoSource() : _id = _uuid.v4();
 
   @mustCallSuper
   Future<void> _setup(AudioPlayer player) async {
     _player = player;
-    player._registerAudioSource(this);
+    player._registerSource(this);
   }
 
   void _shuffle({int? initialIndex});
@@ -2215,9 +2234,9 @@ abstract class AudioSource {
     _player = null;
   }
 
-  AudioSourceMessage _toMessage();
+  SourceMessage _toMessage();
 
-  List<IndexedAudioSource> get sequence;
+  List<IndexedSource> get sequence;
 
   List<int> get shuffleIndices;
 
@@ -2227,35 +2246,39 @@ abstract class AudioSource {
   @override
   bool operator ==(Object other) =>
       other.runtimeType == runtimeType &&
-      other is AudioSource &&
+      other is AudioVideoSource &&
       other._id == _id;
 }
 
-/// An [AudioSource] that can appear in a sequence.
-abstract class IndexedAudioSource extends AudioSource {
+/// An [AudioVideoSource] that can appear in a sequence.
+abstract class IndexedSource extends AudioVideoSource {
   final dynamic tag;
   Duration? duration;
 
-  IndexedAudioSource({this.tag, this.duration});
+  IndexedSource({this.tag, this.duration});
 
   @override
   void _shuffle({int? initialIndex}) {}
 
   @override
-  List<IndexedAudioSource> get sequence => [this];
+  List<IndexedSource> get sequence => [this];
 
   @override
   List<int> get shuffleIndices => [0];
 }
 
 /// An abstract class representing audio sources that are loaded from a URI.
-abstract class UriAudioSource extends IndexedAudioSource {
+abstract class UriSource extends IndexedSource {
   final Uri uri;
   final Map<String, String>? headers;
   Uri? _overrideUri;
 
-  UriAudioSource(this.uri, {this.headers, dynamic tag, Duration? duration})
-      : super(tag: tag, duration: duration);
+  UriSource(
+    this.uri, {
+    this.headers,
+    super.tag,
+    super.duration,
+  });
 
   /// If [uri] points to an asset, this gives us [_overrideUri] which is the URI
   /// of the copied asset on the filesystem, otherwise it gives us the original
@@ -2271,7 +2294,7 @@ abstract class UriAudioSource extends IndexedAudioSource {
         !kIsWeb &&
         (headers != null || player._userAgent != null)) {
       await player._proxy.ensureRunning();
-      _overrideUri = player._proxy.addUriAudioSource(this);
+      _overrideUri = player._proxy.addUriSource(this);
     }
   }
 
@@ -2286,12 +2309,24 @@ abstract class UriAudioSource extends IndexedAudioSource {
         '.opus': 'audio/opus',
         '.wav': 'audio/wav',
         '.weba': 'audio/webm',
-        '.mp4': 'audio/mp4',
         '.m4a': 'audio/mp4',
         '.aif': 'audio/x-aiff',
         '.aifc': 'audio/x-aiff',
         '.aiff': 'audio/x-aiff',
         '.m3u': 'audio/x-mpegurl',
+        // -- videos
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.mkv': 'video/mkv',
+        '.avi': 'video/avi',
+        '.wmv': 'video/wmv',
+        '.flv': 'video/flv',
+        '.mov': 'video/mov',
+        '.3gp': 'video/3gp',
+        '.mpg': 'video/mpg',
+        '.mpeg': 'video/mpeg',
+        '.mpv': 'video/mpv',
+        '.mpeg4': 'video/mpeg4'
       };
       // Default to 'audio/mpeg'
       final mimeType =
@@ -2323,7 +2358,7 @@ abstract class UriAudioSource extends IndexedAudioSource {
       ]));
 }
 
-/// An [AudioSource] representing a regular media file such as an MP3 or M4A
+/// An [AudioVideoSource] representing a regular media file such as an MP3 or M4A
 /// file. The following URI schemes are supported:
 ///
 /// * file: loads from a local file (provided you give your app permission to
@@ -2336,17 +2371,20 @@ abstract class UriAudioSource extends IndexedAudioSource {
 ///
 /// If headers are set, just_audio will create a cleartext local HTTP proxy on
 /// your device to forward HTTP requests with headers included.
-class ProgressiveAudioSource extends UriAudioSource {
-  ProgressiveAudioSource(Uri uri,
-      {Map<String, String>? headers, dynamic tag, Duration? duration})
-      : super(uri, headers: headers, tag: tag, duration: duration);
+class ProgressiveSource extends UriSource {
+  ProgressiveSource(
+    super.uri, {
+    super.headers,
+    super.tag,
+    super.duration,
+  });
 
   @override
-  AudioSourceMessage _toMessage() => ProgressiveAudioSourceMessage(
+  SourceMessage _toMessage() => ProgressiveSourceMessage(
       id: _id, uri: _effectiveUri.toString(), headers: headers, tag: tag);
 }
 
-/// An [AudioSource] representing a DASH stream. The following URI schemes are
+/// An [AudioVideoSource] representing a DASH stream. The following URI schemes are
 /// supported:
 ///
 /// * file: loads from a local file (provided you give your app permission to
@@ -2360,17 +2398,20 @@ class ProgressiveAudioSource extends UriAudioSource {
 ///
 /// If headers are set, just_audio will create a cleartext local HTTP proxy on
 /// your device to forward HTTP requests with headers included.
-class DashAudioSource extends UriAudioSource {
-  DashAudioSource(Uri uri,
-      {Map<String, String>? headers, dynamic tag, Duration? duration})
-      : super(uri, headers: headers, tag: tag, duration: duration);
+class DashSource extends UriSource {
+  DashSource(
+    super.uri, {
+    super.headers,
+    super.tag,
+    super.duration,
+  });
 
   @override
-  AudioSourceMessage _toMessage() => DashAudioSourceMessage(
+  SourceMessage _toMessage() => DashSourceMessage(
       id: _id, uri: _effectiveUri.toString(), headers: headers, tag: tag);
 }
 
-/// An [AudioSource] representing an HLS stream. The following URI schemes are
+/// An [AudioVideoSource] representing an HLS stream. The following URI schemes are
 /// supported:
 ///
 /// * file: loads from a local file (provided you give your app permission to
@@ -2383,45 +2424,48 @@ class DashAudioSource extends UriAudioSource {
 ///
 /// If headers are set, just_audio will create a cleartext local HTTP proxy on
 /// your device to forward HTTP requests with headers included.
-class HlsAudioSource extends UriAudioSource {
-  HlsAudioSource(Uri uri,
-      {Map<String, String>? headers, dynamic tag, Duration? duration})
-      : super(uri, headers: headers, tag: tag, duration: duration);
+class HlsSource extends UriSource {
+  HlsSource(
+    super.uri, {
+    super.headers,
+    super.tag,
+    super.duration,
+  });
 
   @override
-  AudioSourceMessage _toMessage() => HlsAudioSourceMessage(
+  SourceMessage _toMessage() => HlsSourceMessage(
       id: _id, uri: _effectiveUri.toString(), headers: headers, tag: tag);
 }
 
-/// An [AudioSource] for a period of silence.
+/// An [AudioVideoSource] for a period of silence.
 ///
 /// NOTE: This is currently supported on Android only.
-class SilenceAudioSource extends IndexedAudioSource {
+class SilenceSource extends IndexedSource {
   @override
   Duration get duration => super.duration!;
 
   @override
   set duration(covariant Duration duration) => super.duration = duration;
 
-  SilenceAudioSource({
-    dynamic tag,
-    required Duration duration,
-  }) : super(tag: tag, duration: duration);
+  SilenceSource({
+    super.tag,
+    required super.duration,
+  });
 
   @override
-  AudioSourceMessage _toMessage() =>
-      SilenceAudioSourceMessage(id: _id, duration: duration);
+  SourceMessage _toMessage() =>
+      SilenceSourceMessage(id: _id, duration: duration);
 }
 
-/// An [AudioSource] representing a concatenation of multiple audio sources to
+/// An [AudioVideoSource] representing a concatenation of multiple audio sources to
 /// be played in succession. This can be used to create playlists. Playback
 /// between items will be gapless on Android, iOS and macOS, while there will
 /// be a slight gap on Web.
 ///
 /// (Untested) Audio sources can be dynamically added, removed and reordered
 /// while the audio is playing.
-class ConcatenatingAudioSource extends AudioSource {
-  final List<AudioSource> children;
+class ConcatenatingSource extends AudioVideoSource {
+  final List<AudioVideoSource> children;
   final bool useLazyPreparation;
   final ShuffleOrder _shuffleOrder;
 
@@ -2431,7 +2475,7 @@ class ConcatenatingAudioSource extends AudioSource {
   /// only). When [AudioPlayer.shuffleModeEnabled] is `true`, [shuffleOrder]
   /// will be used to determine the playback order (defaulting to
   /// [DefaultShuffleOrder]).
-  ConcatenatingAudioSource({
+  ConcatenatingSource({
     required this.children,
     this.useLazyPreparation = true,
     ShuffleOrder? shuffleOrder,
@@ -2461,15 +2505,15 @@ class ConcatenatingAudioSource extends AudioSource {
         localInitialIndex = ci;
       }
       final childInitialIndex =
-          initialIndexWithinThisChild ? (initialIndex! - si) : null;
+          initialIndexWithinThisChild ? (initialIndex - si) : null;
       child._shuffle(initialIndex: childInitialIndex);
       si += childLength;
     }
     _shuffleOrder.shuffle(initialIndex: localInitialIndex);
   }
 
-  /// (Untested) Appends an [AudioSource].
-  Future<void> add(AudioSource audioSource) async {
+  /// (Untested) Appends an [AudioVideoSource].
+  Future<void> add(AudioVideoSource audioSource) async {
     final index = children.length;
     children.add(audioSource);
     _shuffleOrder.insert(index, 1);
@@ -2485,8 +2529,8 @@ class ConcatenatingAudioSource extends AudioSource {
     }
   }
 
-  /// (Untested) Inserts an [AudioSource] at [index].
-  Future<void> insert(int index, AudioSource audioSource) async {
+  /// (Untested) Inserts an [AudioVideoSource] at [index].
+  Future<void> insert(int index, AudioVideoSource audioSource) async {
     children.insert(index, audioSource);
     _shuffleOrder.insert(index, 1);
     if (_player != null) {
@@ -2501,8 +2545,8 @@ class ConcatenatingAudioSource extends AudioSource {
     }
   }
 
-  /// (Untested) Appends multiple [AudioSource]s.
-  Future<void> addAll(List<AudioSource> children) async {
+  /// (Untested) Appends multiple [AudioVideoSource]s.
+  Future<void> addAll(List<AudioVideoSource> children) async {
     final index = this.children.length;
     this.children.addAll(children);
     _shuffleOrder.insert(index, children.length);
@@ -2520,8 +2564,8 @@ class ConcatenatingAudioSource extends AudioSource {
     }
   }
 
-  /// (Untested) Insert multiple [AudioSource]s at [index].
-  Future<void> insertAll(int index, List<AudioSource> children) async {
+  /// (Untested) Insert multiple [AudioVideoSource]s at [index].
+  Future<void> insertAll(int index, List<AudioVideoSource> children) async {
     this.children.insertAll(index, children);
     _shuffleOrder.insert(index, children.length);
     if (_player != null) {
@@ -2538,8 +2582,8 @@ class ConcatenatingAudioSource extends AudioSource {
     }
   }
 
-  /// (Untested) Dynamically remove an [AudioSource] at [index] after this
-  /// [ConcatenatingAudioSource] has already been loaded.
+  /// (Untested) Dynamically remove an [AudioVideoSource] at [index] after this
+  /// [ConcatenatingSource] has already been loaded.
   Future<void> removeAt(int index) async {
     children.removeAt(index);
     _shuffleOrder.removeRange(index, index + 1);
@@ -2554,7 +2598,7 @@ class ConcatenatingAudioSource extends AudioSource {
     }
   }
 
-  /// (Untested) Removes a range of [AudioSource]s from index [start] inclusive
+  /// (Untested) Removes a range of [AudioVideoSource]s from index [start] inclusive
   /// to [end] exclusive.
   Future<void> removeRange(int start, int end) async {
     children.removeRange(start, end);
@@ -2570,7 +2614,7 @@ class ConcatenatingAudioSource extends AudioSource {
     }
   }
 
-  /// (Untested) Moves an [AudioSource] from [currentIndex] to [newIndex].
+  /// (Untested) Moves an [AudioVideoSource] from [currentIndex] to [newIndex].
   Future<void> move(int currentIndex, int newIndex) async {
     children.insert(newIndex, children.removeAt(currentIndex));
     _shuffleOrder.removeRange(currentIndex, currentIndex + 1);
@@ -2586,7 +2630,7 @@ class ConcatenatingAudioSource extends AudioSource {
     }
   }
 
-  /// (Untested) Removes all [AudioSource]s.
+  /// (Untested) Removes all [AudioVideoSource]s.
   Future<void> clear() async {
     final end = children.length;
     children.clear();
@@ -2602,13 +2646,13 @@ class ConcatenatingAudioSource extends AudioSource {
     }
   }
 
-  /// The number of [AudioSource]s.
+  /// The number of [AudioVideoSource]s.
   int get length => children.length;
 
-  AudioSource operator [](int index) => children[index];
+  AudioVideoSource operator [](int index) => children[index];
 
   @override
-  List<IndexedAudioSource> get sequence =>
+  List<IndexedSource> get sequence =>
       children.expand((s) => s.sequence).toList();
 
   @override
@@ -2628,30 +2672,30 @@ class ConcatenatingAudioSource extends AudioSource {
   }
 
   @override
-  AudioSourceMessage _toMessage() => ConcatenatingAudioSourceMessage(
+  SourceMessage _toMessage() => ConcatenatingSourceMessage(
       id: _id,
       children: children.map((child) => child._toMessage()).toList(),
       useLazyPreparation: useLazyPreparation,
       shuffleOrder: _shuffleOrder.indices);
 }
 
-/// An [AudioSource] that clips the audio of a [UriAudioSource] between a
+/// An [AudioVideoSource] that clips the audio of a [UriSource] between a
 /// certain start and end time.
-class ClippingAudioSource extends IndexedAudioSource {
-  final UriAudioSource child;
+class ClippingSource extends IndexedSource {
+  final UriSource child;
   final Duration? start;
   final Duration? end;
 
   /// Creates an audio source that clips [child] to the range [start]..[end],
   /// where [start] and [end] default to the beginning and end of the original
   /// [child] source.
-  ClippingAudioSource({
+  ClippingSource({
     required this.child,
     this.start,
     this.end,
-    dynamic tag,
-    Duration? duration,
-  }) : super(tag: tag, duration: duration);
+    super.tag,
+    super.duration,
+  });
 
   @override
   Future<void> _setup(AudioPlayer player) async {
@@ -2660,25 +2704,25 @@ class ClippingAudioSource extends IndexedAudioSource {
   }
 
   @override
-  AudioSourceMessage _toMessage() => ClippingAudioSourceMessage(
+  SourceMessage _toMessage() => ClippingSourceMessage(
       id: _id,
-      child: child._toMessage() as UriAudioSourceMessage,
+      child: child._toMessage() as UriSourceMessage,
       start: start,
       end: end,
       tag: tag);
 }
 
-// An [AudioSource] that loops a nested [AudioSource] a finite number of times.
+// An [Source] that loops a nested [Source] a finite number of times.
 // NOTE: this can be inefficient when using a large loop count. If you wish to
 // loop an infinite number of times, use [AudioPlayer.setLoopMode].
-class LoopingAudioSource extends AudioSource {
-  AudioSource child;
+class LoopingSource extends AudioVideoSource {
+  AudioVideoSource child;
   final int count;
 
-  LoopingAudioSource({
+  LoopingSource({
     required this.child,
     required this.count,
-  }) : super();
+  });
 
   @override
   Future<void> _setup(AudioPlayer player) async {
@@ -2690,26 +2734,26 @@ class LoopingAudioSource extends AudioSource {
   void _shuffle({int? initialIndex}) {}
 
   @override
-  List<IndexedAudioSource> get sequence =>
+  List<IndexedSource> get sequence =>
       List.generate(count, (i) => child).expand((s) => s.sequence).toList();
 
   @override
   List<int> get shuffleIndices => List.generate(count, (i) => i);
 
   @override
-  AudioSourceMessage _toMessage() => LoopingAudioSourceMessage(
-      id: _id, child: child._toMessage(), count: count);
+  SourceMessage _toMessage() =>
+      LoopingSourceMessage(id: _id, child: child._toMessage(), count: count);
 }
 
 Uri _encodeDataUrl(String base64Data, String mimeType) =>
     Uri.parse('data:$mimeType;base64,$base64Data');
 
-/// An [AudioSource] that provides audio dynamically. Subclasses must override
+/// An [AudioVideoSource] that provides audio dynamically. Subclasses must override
 /// [request] to provide the encoded audio data. This API is experimental.
 @experimental
-abstract class StreamAudioSource extends IndexedAudioSource {
+abstract class StreamSource extends IndexedSource {
   Uri? _uri;
-  StreamAudioSource({dynamic tag}) : super(tag: tag);
+  StreamSource({super.tag});
 
   @override
   Future<void> _setup(AudioPlayer player) async {
@@ -2720,7 +2764,7 @@ abstract class StreamAudioSource extends IndexedAudioSource {
           response.contentType);
     } else {
       await player._proxy.ensureRunning();
-      _uri = player._proxy.addStreamAudioSource(this);
+      _uri = player._proxy.addStreamSource(this);
     }
   }
 
@@ -2732,11 +2776,11 @@ abstract class StreamAudioSource extends IndexedAudioSource {
   Future<StreamAudioResponse> request([int? start, int? end]);
 
   @override
-  AudioSourceMessage _toMessage() => ProgressiveAudioSourceMessage(
+  SourceMessage _toMessage() => ProgressiveSourceMessage(
       id: _id, uri: _uri.toString(), headers: null, tag: tag);
 }
 
-/// The response for a [StreamAudioSource]. This API is experimental.
+/// The response for a [StreamSource]. This API is experimental.
 @experimental
 class StreamAudioResponse {
   /// Indicates to the client whether or not range requests are supported for
@@ -2774,11 +2818,31 @@ class StreamAudioResponse {
   });
 }
 
+class LockCachingAudioSource extends LockCachingSource {
+  LockCachingAudioSource(
+    super.uri, {
+    super.headers,
+    super.onCacheDone,
+    super.cacheFile,
+    super.tag,
+  }) : super(fallbackMemeType: 'audio/mpeg');
+}
+
+class LockCachingVideoSource extends LockCachingSource {
+  LockCachingVideoSource(
+    super.uri, {
+    super.headers,
+    super.onCacheDone,
+    super.cacheFile,
+    super.tag,
+  }) : super(fallbackMemeType: 'video/mpeg');
+}
+
 /// This is an experimental audio source that caches the audio while it is being
 /// downloaded and played. It is not supported on platforms that do not provide
 /// access to the file system (e.g. web).
 @experimental
-class LockCachingAudioSource extends StreamAudioSource {
+abstract class LockCachingSource extends StreamSource {
   Future<HttpClientResponse>? _response;
   final Uri uri;
   final Map<String, String>? headers;
@@ -2789,16 +2853,19 @@ class LockCachingAudioSource extends StreamAudioSource {
   final _downloadProgressSubject = BehaviorSubject<double>();
   bool _downloading = false;
 
-  /// Creates a [LockCachingAudioSource] to that provides [uri] to the player
+  final String fallbackMemeType;
+
+  /// Creates a [LockCachingSource] to that provides [uri] to the player
   /// while simultaneously caching it to [cacheFile]. If no cache file is
   /// supplied, just_audio will allocate a cache file internally.
   ///
   /// If headers are set, just_audio will create a cleartext local HTTP proxy on
   /// your device to forward HTTP requests with headers included.
-  LockCachingAudioSource(
+  LockCachingSource(
     this.uri, {
-    this.headers,
-    this.onCacheDone,
+    required this.headers,
+    required this.onCacheDone,
+    required this.fallbackMemeType,
     File? cacheFile,
     dynamic tag,
   })  : cacheFile =
@@ -2812,11 +2879,13 @@ class LockCachingAudioSource extends StreamAudioSource {
     _downloadProgressSubject.add((await cacheFile.exists()) ? 1.0 : 0.0);
   }
 
-  /// Returns a [UriAudioSource] resolving directly to the cache file if it
+  /// Returns a [UriSource] resolving directly to the cache file if it
   /// exists, otherwise returns `this`. This can be
-  Future<IndexedAudioSource> resolve() async {
+  Future<IndexedSource> resolve() async {
     final file = await cacheFile;
-    return await file.exists() ? AudioSource.uri(Uri.file(file.path)) : this;
+    return await file.exists()
+        ? AudioVideoSource.uri(Uri.file(file.path))
+        : this;
   }
 
   /// Emits the current download progress as a double value from 0.0 (nothing
@@ -2864,7 +2933,7 @@ class LockCachingAudioSource extends StreamAudioSource {
     if (file.existsSync()) {
       return (await _mimeFile).readAsString();
     } else {
-      return 'audio/mpeg';
+      return fallbackMemeType;
     }
   }
 
@@ -3100,7 +3169,7 @@ class LockCachingAudioSource extends StreamAudioSource {
   }
 }
 
-/// When a byte range request on a [LockCachingAudioSource] overlaps partially
+/// When a byte range request on a [LockCachingSource] overlaps partially
 /// with the cache file and partially with the live HTTP stream, the consumer
 /// needs to first consume the cached part before the live part. This class
 /// provides a place to buffer the live part until the consumer reaches it, and
@@ -3120,7 +3189,7 @@ class _InProgressCacheResponse {
   });
 }
 
-/// Request parameters for a [StreamAudioSource].
+/// Request parameters for a [StreamSource].
 class _StreamingByteRangeRequest {
   /// The start of the range request.
   final int? start;
@@ -3157,8 +3226,8 @@ class _StreamingByteRangeRequest {
 typedef _ProxyHandler = void Function(
     _ProxyHttpServer server, HttpRequest request);
 
-/// A proxy handler for serving audio from a [StreamAudioSource].
-_ProxyHandler _proxyHandlerForSource(StreamAudioSource source) {
+/// A proxy handler for serving audio from a [StreamSource].
+_ProxyHandler _proxyHandlerForSource(StreamSource source) {
   Future<void> handler(_ProxyHttpServer server, HttpRequest request) async {
     final rangeRequest =
         _HttpRangeRequest.parse(request.headers[HttpHeaders.rangeHeader]);
@@ -3272,7 +3341,7 @@ _ProxyHandler _proxyHandlerForUri(
             final rawNestedUri = Uri.parse(line);
             if (rawNestedUri.hasScheme) {
               // Don't propagate headers
-              server.addUriAudioSource(AudioSource.uri(rawNestedUri));
+              server.addUriSource(AudioVideoSource.uri(rawNestedUri));
             } else {
               // This is a resource on the same server, so propagate the headers.
               final basePath = rawNestedUri.path.startsWith('/')
@@ -3280,8 +3349,8 @@ _ProxyHandler _proxyHandlerForUri(
                   : uri.path.replaceAll(RegExp(r'/[^/]*$'), '/');
               final nestedUri =
                   uri.replace(path: '$basePath${rawNestedUri.path}');
-              server.addUriAudioSource(
-                  AudioSource.uri(nestedUri, headers: headers));
+              server.addUriSource(
+                  AudioVideoSource.uri(nestedUri, headers: headers));
             }
           } catch (e) {
             // ignore malformed lines
@@ -3349,15 +3418,15 @@ Future<Directory> _getCacheDir() async =>
     Directory(p.join((await getTemporaryDirectory()).path, 'just_audio_cache'));
 
 /// Defines the algorithm for shuffling the order of a
-/// [ConcatenatingAudioSource]. See [DefaultShuffleOrder] for a default
+/// [ConcatenatingSource]. See [DefaultShuffleOrder] for a default
 /// implementation.
 abstract class ShuffleOrder {
-  /// The shuffled list of indices of [AudioSource]s to play. For example,
+  /// The shuffled list of indices of [AudioVideoSource]s to play. For example,
   /// [2,0,1] specifies to play the 3rd, then the 1st, then the 2nd item.
   List<int> get indices;
 
   /// Shuffles the [indices]. If the current item in the player falls within the
-  /// [ConcatenatingAudioSource] being shuffled, [initialIndex] will point to
+  /// [ConcatenatingSource] being shuffled, [initialIndex] will point to
   /// that item. Subclasses may use this information as a hint, for example, to
   /// make [initialIndex] the first item in the shuffle order.
   void shuffle({int? initialIndex});
@@ -3442,14 +3511,14 @@ class _IdleAudioPlayer extends AudioPlayerPlatform {
   final _eventSubject = BehaviorSubject<PlaybackEventMessage>();
   late Duration _position;
   int? _index;
-  List<IndexedAudioSource>? _sequence;
+  List<IndexedSource>? _sequence;
 
   /// Holds a pending request.
   SetAndroidAudioAttributesRequest? setAndroidAudioAttributesRequest;
 
   _IdleAudioPlayer({
     required String id,
-    required Stream<List<IndexedAudioSource>?> sequenceStream,
+    required Stream<List<IndexedSource>?> sequenceStream,
   }) : super(id) {
     sequenceStream.listen((sequence) => _sequence = sequence);
   }
@@ -3486,7 +3555,7 @@ class _IdleAudioPlayer extends AudioPlayerPlatform {
   }
 
   @override
-  Future<void> setVideo(VideoOptions? video) async {}
+  Future<void> setVideo(VideoLoadRequest? video) async {}
 
   @override
   Future<PlayResponse> play(PlayRequest request) async {

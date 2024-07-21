@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
@@ -87,7 +86,7 @@ abstract class AudioPlayerPlatform {
   }
 
   /// Set a video source, use null to disable video.
-  Future<void> setVideo(VideoOptions? video) {
+  Future<void> setVideo(VideoLoadRequest? video) {
     throw UnimplementedError("setVideo() has not been implemented.");
   }
 
@@ -546,28 +545,44 @@ class DisposeAllPlayersResponse {
 /// Information communicated to the platform implementation when loading an
 /// audio source.
 class LoadRequest {
-  final AudioSourceMessage audioSourceMessage;
+  final SourceMessage audioSourceMessage;
+  final VideoLoadRequest? videoRequest;
   final Duration? initialPosition;
   final int? initialIndex;
-  final VideoOptions? videoOptions;
-  final bool videoOnly;
   final bool keepOldVideoSource;
 
   const LoadRequest({
     required this.audioSourceMessage,
-    this.initialPosition,
-    this.initialIndex,
-    this.videoOptions,
-    required this.videoOnly,
-    this.keepOldVideoSource = false,
+    required this.videoRequest,
+    required this.initialPosition,
+    required this.initialIndex,
+    required this.keepOldVideoSource,
   });
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
         'audioSource': audioSourceMessage.toMap(),
+        'videoOptions': videoRequest?.toMap(),
         'initialPosition': initialPosition?.inMicroseconds,
         'initialIndex': initialIndex,
-        'videoOptions': videoOptions?.toMap(),
         'keepOldVideoSource': keepOldVideoSource,
+      };
+}
+
+class VideoLoadRequest {
+  final SourceMessage videoSourceMessage;
+  final bool videoOnly;
+  final bool videoLoop;
+
+  const VideoLoadRequest({
+    required this.videoSourceMessage,
+    required this.videoOnly,
+    required this.videoLoop,
+  });
+
+  Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
+        'videoSource': videoSourceMessage.toMap(),
+        'videoOnly': videoOnly,
+        'loop': videoLoop,
       };
 }
 
@@ -730,7 +745,7 @@ enum ShuffleModeMessage { none, all }
 /// Information communicated to the platform implementation when setting the
 /// shuffle order.
 class SetShuffleOrderRequest {
-  final AudioSourceMessage audioSourceMessage;
+  final SourceMessage audioSourceMessage;
 
   const SetShuffleOrderRequest({required this.audioSourceMessage});
 
@@ -869,7 +884,7 @@ class DisposeResponse {
 class ConcatenatingInsertAllRequest {
   final String id;
   final int index;
-  final List<AudioSourceMessage> children;
+  final List<SourceMessage> children;
   final List<int> shuffleOrder;
 
   const ConcatenatingInsertAllRequest({
@@ -1114,174 +1129,48 @@ class AndroidLivePlaybackSpeedControlMessage {
       };
 }
 
-class VideoOptions {
-  /// The URI to the video file.
-  final String source;
-
-  /// **Android Only**:
-  ///  The video provided is meant to be a short animation, a/v sync is NOT guranteed.
-  final bool loopingAnimation;
-
-  /// **Android Only**:
-  /// Wether to use network video caching or not.
-  final bool enableCaching;
-
-  /// **Android Only**:
-  /// Optional Cache Key, useful for dynamic links. key must be unique
-  /// to the video stream, providing non-unique key means playing the wrong video.
-  final String cacheKey;
-
-  /// **Android Only**
-  ///
-  /// Specifying cache directory will toggle proxy caching, use only
-  /// if you want to use the video files after caching.
-  ///
-  /// Providing a null [cacheDirectory] while [enableCaching] is true
-  /// means using default exoplayer caching system, which result can't be used
-  /// outside exoplayer
-  final Directory? cacheDirectory;
-
-  /// **Android Only**:
-  /// Max Cache Size for a single file.
-  ///
-  /// **Only works with exoplayer cache system, i.e. when [cacheDirectory] == null**
-  ///
-  /// defaults to 100 MB.
-  final ByteSize maxSingleFileCacheSize;
-
-  /// **Android Only**:
-  /// Total Cache Size for all files.
-  ///
-  /// defaults to 1 GB.
-  final ByteSize maxTotalCacheSize;
-
-  /// HTTP headers used for the request to the [dataSource].
-  /// Only for [VideoPlayerController.network].
-  /// Always empty for other video types.
-  final Map<String, String> httpHeaders;
-
-  /// **Android only**. Will override the platform's generic file format
-  /// detection with whatever is set here.
-  final VideoFormat? formatHint;
-
-  const VideoOptions({
-    required this.source,
-    this.loopingAnimation = false,
-    required this.enableCaching,
-    required this.cacheKey,
-    required this.cacheDirectory,
-    this.maxSingleFileCacheSize = const ByteSize(mb: 100),
-    this.maxTotalCacheSize = const ByteSize(gb: 1),
-    this.httpHeaders = const {},
-    this.formatHint,
-  });
-
-  Map<String, dynamic> toMap() {
-    return {
-      'source': source,
-      'loop': loopingAnimation,
-      'enableCaching': enableCaching,
-      'cacheKey': cacheKey,
-      'cacheDirectory': cacheDirectory?.path,
-      'maxSingleFileCacheSize': maxSingleFileCacheSize.totalBytes,
-      'maxTotalCacheSize': maxTotalCacheSize.totalBytes,
-      'httpHeaders': httpHeaders,
-      'formatHint':
-          formatHint == null ? null : _videoFormatStringMap[formatHint],
-    };
-  }
-}
-
-class ByteSize {
-  final int bytes;
-  final int kb;
-  final int mb;
-  final int gb;
-  final int tb;
-
-  const ByteSize({
-    this.bytes = 0,
-    this.kb = 0,
-    this.mb = 0,
-    this.gb = 0,
-    this.tb = 0,
-  });
-
-  int get totalBytes {
-    int b = 0;
-    b += bytes;
-    b += kb * 1024;
-    b += mb * 1024 * 1024;
-    b += gb * 1024 * 1024 * 1024;
-    b += tb * 1024 * 1024 * 1024 * 1024;
-    return b;
-  }
-}
-
-const Map<VideoFormat, String> _videoFormatStringMap = <VideoFormat, String>{
-  VideoFormat.ss: 'ss',
-  VideoFormat.hls: 'hls',
-  VideoFormat.dash: 'dash',
-  VideoFormat.other: 'other',
-};
-
-enum VideoFormat {
-  /// Dynamic Adaptive Streaming over HTTP, also known as MPEG-DASH.
-  dash,
-
-  /// HTTP Live Streaming.
-  hls,
-
-  /// Smooth Streaming.
-  ss,
-
-  /// Any format other than the other ones defined in this enum.
-  other,
-}
-
 /// Information about an audio source to be communicated with the platform
 /// implementation.
-abstract class AudioSourceMessage {
+abstract class SourceMessage {
   final String id;
 
-  const AudioSourceMessage({required this.id});
+  const SourceMessage({required this.id});
 
   Map<dynamic, dynamic> toMap();
 }
 
 /// Information about an indexed audio source to be communicated with the
 /// platform implementation.
-abstract class IndexedAudioSourceMessage extends AudioSourceMessage {
+abstract class IndexedSourceMessage extends SourceMessage {
   /// Since the tag type is unknown, this can only be used by platform
   /// implementations that pass by reference.
   final dynamic tag;
-  const IndexedAudioSourceMessage({required String id, this.tag})
-      : super(id: id);
+  const IndexedSourceMessage({required super.id, this.tag});
 }
 
 /// Information about a URI audio source to be communicated with the platform
 /// implementation.
-abstract class UriAudioSourceMessage extends IndexedAudioSourceMessage {
+abstract class UriSourceMessage extends IndexedSourceMessage {
   final String uri;
   final Map<String, String>? headers;
 
-  const UriAudioSourceMessage({
-    required String id,
+  const UriSourceMessage({
+    required super.id,
     required this.uri,
     this.headers,
-    dynamic tag,
-  }) : super(id: id, tag: tag);
+    super.tag,
+  });
 }
 
 /// Information about a progressive audio source to be communicated with the
 /// platform implementation.
-class ProgressiveAudioSourceMessage extends UriAudioSourceMessage {
-  const ProgressiveAudioSourceMessage({
-    required String id,
-    required String uri,
-    Map<String, String>? headers,
-    dynamic tag,
-  }) : super(id: id, uri: uri, headers: headers, tag: tag);
+class ProgressiveSourceMessage extends UriSourceMessage {
+  const ProgressiveSourceMessage({
+    required super.id,
+    required super.uri,
+    super.headers,
+    super.tag,
+  });
 
   @override
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
@@ -1294,13 +1183,13 @@ class ProgressiveAudioSourceMessage extends UriAudioSourceMessage {
 
 /// Information about a DASH audio source to be communicated with the platform
 /// implementation.
-class DashAudioSourceMessage extends UriAudioSourceMessage {
-  const DashAudioSourceMessage({
-    required String id,
-    required String uri,
-    Map<String, String>? headers,
-    dynamic tag,
-  }) : super(id: id, uri: uri, headers: headers, tag: tag);
+class DashSourceMessage extends UriSourceMessage {
+  const DashSourceMessage({
+    required super.id,
+    required super.uri,
+    super.headers,
+    super.tag,
+  });
 
   @override
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
@@ -1313,13 +1202,13 @@ class DashAudioSourceMessage extends UriAudioSourceMessage {
 
 /// Information about a HLS audio source to be communicated with the platform
 /// implementation.
-class HlsAudioSourceMessage extends UriAudioSourceMessage {
-  const HlsAudioSourceMessage({
-    required String id,
-    required String uri,
-    Map<String, String>? headers,
-    dynamic tag,
-  }) : super(id: id, uri: uri, headers: headers, tag: tag);
+class HlsSourceMessage extends UriSourceMessage {
+  const HlsSourceMessage({
+    required super.id,
+    required super.uri,
+    super.headers,
+    super.tag,
+  });
 
   @override
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
@@ -1332,13 +1221,13 @@ class HlsAudioSourceMessage extends UriAudioSourceMessage {
 
 /// Information about a silence audio source to be communicated with the
 /// platform implementation.
-class SilenceAudioSourceMessage extends IndexedAudioSourceMessage {
+class SilenceSourceMessage extends IndexedSourceMessage {
   final Duration duration;
 
-  const SilenceAudioSourceMessage({
-    required String id,
+  const SilenceSourceMessage({
+    required super.id,
     required this.duration,
-  }) : super(id: id);
+  });
 
   @override
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
@@ -1350,17 +1239,17 @@ class SilenceAudioSourceMessage extends IndexedAudioSourceMessage {
 
 /// Information about a concatenating audio source to be communicated with the
 /// platform implementation.
-class ConcatenatingAudioSourceMessage extends AudioSourceMessage {
-  final List<AudioSourceMessage> children;
+class ConcatenatingSourceMessage extends SourceMessage {
+  final List<SourceMessage> children;
   final bool useLazyPreparation;
   final List<int> shuffleOrder;
 
-  const ConcatenatingAudioSourceMessage({
-    required String id,
+  const ConcatenatingSourceMessage({
+    required super.id,
     required this.children,
     required this.useLazyPreparation,
     required this.shuffleOrder,
-  }) : super(id: id);
+  });
 
   @override
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
@@ -1374,18 +1263,18 @@ class ConcatenatingAudioSourceMessage extends AudioSourceMessage {
 
 /// Information about a clipping audio source to be communicated with the
 /// platform implementation.
-class ClippingAudioSourceMessage extends IndexedAudioSourceMessage {
-  final UriAudioSourceMessage child;
+class ClippingSourceMessage extends IndexedSourceMessage {
+  final UriSourceMessage child;
   final Duration? start;
   final Duration? end;
 
-  const ClippingAudioSourceMessage({
-    required String id,
+  const ClippingSourceMessage({
+    required super.id,
     required this.child,
     this.start,
     this.end,
-    dynamic tag,
-  }) : super(id: id, tag: tag);
+    super.tag,
+  });
 
   @override
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
@@ -1399,15 +1288,15 @@ class ClippingAudioSourceMessage extends IndexedAudioSourceMessage {
 
 /// Information about a looping audio source to be communicated with the
 /// platform implementation.
-class LoopingAudioSourceMessage extends AudioSourceMessage {
-  final AudioSourceMessage child;
+class LoopingSourceMessage extends SourceMessage {
+  final SourceMessage child;
   final int count;
 
-  const LoopingAudioSourceMessage({
-    required String id,
+  const LoopingSourceMessage({
+    required super.id,
     required this.child,
     required this.count,
-  }) : super(id: id);
+  });
 
   @override
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
