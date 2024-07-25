@@ -223,8 +223,6 @@ class MyAppState extends State<MyApp> {
                   stream: _player2.videoInfoStream,
                   builder: (context, snapshot) {
                     final info = snapshot.data;
-                    // inspect(info);
-                    print('----------> ${info?.height}');
                     final id = info?.textureId;
                     if (info == null || id == null || id == -1) {
                       return const Text('no video');

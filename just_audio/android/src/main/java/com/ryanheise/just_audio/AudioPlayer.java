@@ -118,7 +118,6 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private final TextureRegistry.SurfaceTextureEntry textureEntry;
   private Surface surface;
   private VideoOptions videoOptions;
-  private Boolean videoOnly;
 
   private DefaultHttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory();
 
@@ -819,15 +818,13 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     // always update video source, unless specified.
     if (keepOldVideoSource != true) {
       this.videoOptions = videoOptions;
-      this.videoOptions = videoOptions;
-      this.videoOnly = videoOptions != null && videoOptions.videoOnly == true;
       this.handledVideoError = false;
       sendDisposeVideo();
     }
 
     // TODO: pass in initial position here.
     if (this.videoOptions != null) {
-      if (this.videoOnly) {
+      if (this.videoOptions.videoOnly == true) {
         this.mediaSource = videoOptions.source;
       } else {
         this.mediaSource = new MergingMediaSource(audioSource, videoOptions.source);
