@@ -2867,10 +2867,9 @@ abstract class LockCachingSource extends StreamSource {
     required this.onCacheDone,
     required this.fallbackMemeType,
     File? cacheFile,
-    dynamic tag,
-  })  : cacheFile =
-            cacheFile != null ? Future.value(cacheFile) : _getCacheFile(uri),
-        super(tag: tag) {
+    super.tag,
+  }) : cacheFile =
+            cacheFile != null ? Future.value(cacheFile) : _getCacheFile(uri) {
     _init();
   }
 
