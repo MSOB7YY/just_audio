@@ -17,6 +17,9 @@ rootProject.allprojects {
     repositories {
         google()
         mavenCentral()
+        maven {
+          url = project(':just_audio').file('repo')
+        }
     }
 }
 
@@ -50,16 +53,17 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility 1.8
-        targetCompatibility 1.8
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
 }
 
 dependencies {
+    implementation "androidx.media3:media3-decode-ffmpeg:1.2.0" // ffmpeg extension
     def exoplayer_version = "1.4.0"
     implementation "androidx.media3:media3-exoplayer:$exoplayer_version"
     implementation "androidx.media3:media3-exoplayer-dash:$exoplayer_version"
     implementation "androidx.media3:media3-exoplayer-hls:$exoplayer_version"
     implementation "androidx.media3:media3-exoplayer-smoothstreaming:$exoplayer_version"
-    implementation "androidx.annotation:annotation:1.7.1"
+    implementation "androidx.annotation:annotation:1.8.1"
 }

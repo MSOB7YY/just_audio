@@ -962,7 +962,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         @Override
         protected AudioSink buildAudioSink(Context context, boolean enableFloatOutput,
             boolean enableAudioTrackPlaybackParams) {
-          return new DefaultAudioSink.Builder()
+          return new DefaultAudioSink.Builder(context)
               .setAudioProcessorChain(new DefaultAudioSink.DefaultAudioProcessorChain(new AudioProcessor[0], // silence
                   // and
                   // sonic
@@ -974,7 +974,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
               .build();
         }
-      };
+      }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER);
 
       builder.setRenderersFactory(renderersFactory);
       player = builder.build();
