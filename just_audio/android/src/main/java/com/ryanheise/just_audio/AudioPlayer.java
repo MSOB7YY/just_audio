@@ -974,7 +974,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
               .build();
         }
-      }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER);
+      }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
 
       builder.setRenderersFactory(renderersFactory);
       player = builder.build();
