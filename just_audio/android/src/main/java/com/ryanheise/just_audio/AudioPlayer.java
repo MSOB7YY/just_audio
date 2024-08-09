@@ -95,7 +95,6 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private Long start;
   private Long end;
   private Long seekPos;
-  private long initialPos;
   private Integer initialIndex;
   private Result prepareResult;
   private Result playResult;
@@ -332,11 +331,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
   @Override
   public void onTimelineChanged(Timeline timeline, int reason) {
-    if (initialPos != C.TIME_UNSET || initialIndex != null) {
+    if (initialIndex != null) {
       int windowIndex = initialIndex != null ? initialIndex : 0;
-      player.seekTo(windowIndex, initialPos);
+      player.seekTo(windowIndex, C.TIME_UNSET);
       initialIndex = null;
-      initialPos = C.TIME_UNSET;
     }
     if (updateCurrentIndex()) {
       broadcastImmediatePlaybackEvent();
@@ -794,7 +792,6 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
   private void load(final MediaSource audioSource, final VideoOptions videoOptions, final long initialPosition,
       final Integer initialIndex, final Boolean keepOldVideoSource, final Result result) {
-    this.initialPos = initialPosition;
     this.initialIndex = initialIndex;
     this.audioSource = audioSource;
     currentIndex = initialIndex != null ? initialIndex : 0;
@@ -834,6 +831,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     }
 
     player.setMediaSource(this.mediaSource);
+
+    if (initialPosition != C.TIME_UNSET) {
+      player.seekTo(initialPosition);
+    }
+
     // player.setVideoSurface(surface);
     player.prepare();
   }
@@ -1124,9 +1126,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   }
 
   private long getCurrentPosition() {
-    if (initialPos != C.TIME_UNSET) {
-      return initialPos;
-    } else if (processingState == ProcessingState.none || processingState == ProcessingState.loading) {
+    if (processingState == ProcessingState.none || processingState == ProcessingState.loading) {
       long pos = player.getCurrentPosition();
       if (pos < 0)
         pos = 0;
