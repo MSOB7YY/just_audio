@@ -114,7 +114,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private Map<String, Object> pendingPlaybackEvent;
 
   private final BetterEventChannel videoEventChannel;
-  private final TextureRegistry.SurfaceTextureEntry textureEntry;
+  private final TextureRegistry.SurfaceProducer surfaceProducer;
   private Surface surface;
   private VideoOptions videoOptions;
 
@@ -159,11 +159,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
   public AudioPlayer(final Context applicationContext, final BinaryMessenger messenger, final String id,
       Map<?, ?> audioLoadConfiguration, List<Object> rawAudioEffects,
-      TextureRegistry.SurfaceTextureEntry textureEntry) {
+      TextureRegistry textureRegistry) {
     this.context = applicationContext;
     this.rawAudioEffects = rawAudioEffects;
-    this.textureEntry = textureEntry;
-    surface = new Surface(textureEntry.surfaceTexture());
+    this.surfaceProducer = textureRegistry.createSurfaceProducer();
+    surface = this.surfaceProducer.getSurface();
     methodChannel = new MethodChannel(messenger, "com.ryanheise.just_audio.methods." + id);
     methodChannel.setMethodCallHandler(this);
     eventChannel = new BetterEventChannel(messenger, "com.ryanheise.just_audio.events." + id);
@@ -929,7 +929,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private void sendVideoInfo() {
     final Map<String, Object> videoInfoMap = new HashMap<String, Object>();
     final Format videoInfo = (loopingPlayer != null ? loopingPlayer : player).getVideoFormat();
-    videoInfoMap.put("textureId", videoOptions == null || videoInfo == null ? -1 : textureEntry.id());
+    videoInfoMap.put("textureId", videoOptions == null || videoInfo == null ? -1 : surfaceProducer.id());
     if (videoInfo != null) {
       videoInfoMap.put("id", videoInfo.id);
       videoInfoMap.put("width", videoInfo.width);
@@ -1278,7 +1278,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     // -- video
     // sendDisposeVideo();
     videoEventChannel.endOfStream();
-    textureEntry.release();
+    surfaceProducer.release();
     if (surface != null) {
       surface.release();
     }

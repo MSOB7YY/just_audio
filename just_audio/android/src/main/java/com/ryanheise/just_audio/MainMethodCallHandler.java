@@ -2,6 +2,8 @@ package com.ryanheise.just_audio;
 
 import android.content.Context;
 import android.util.Rational;
+import android.view.Surface;
+
 import androidx.annotation.NonNull;
 import androidx.media3.common.util.UnstableApi;
 
@@ -67,9 +69,9 @@ public class MainMethodCallHandler implements MethodCallHandler {
         }
         latestId = id;
         final List<Object> rawAudioEffects = call.argument("androidAudioEffects");
-        final TextureRegistry.SurfaceTextureEntry texture = textureRegistry.createSurfaceTexture();
+        final TextureRegistry.SurfaceProducer surface = textureRegistry.createSurfaceProducer();
         players.put(id, new AudioPlayer(applicationContext, messenger, id, call.argument("audioLoadConfiguration"),
-            rawAudioEffects, texture));
+            rawAudioEffects, textureRegistry));
         result.success(null);
         break;
       }
