@@ -819,15 +819,26 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       sendDisposeVideo();
     }
 
+    Boolean setLoopPlayer = false;
+
     // TODO: pass in initial position here.
     if (this.videoOptions != null) {
       if (this.videoOptions.videoOnly == true) {
         this.mediaSource = videoOptions.source;
+      } else if (this.videoOptions.loop == true) {
+        this.mediaSource = audioSource;
+        setLoopPlayer = true;
       } else {
         this.mediaSource = new MergingMediaSource(audioSource, videoOptions.source);
       }
     } else {
       this.mediaSource = audioSource;
+    }
+
+    if (setLoopPlayer) {
+      updateLoopingPlayer();
+    } else {
+      disposeLoopingPlayer();
     }
 
     player.setMediaSource(this.mediaSource);
@@ -888,9 +899,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       if (loopingPlayer == null) {
         // -- ensure initialized
         ExoPlayer.Builder builder = new ExoPlayer.Builder(context);
-        if (loadControl != null) {
-          builder.setLoadControl(loadControl);
-        }
+
+        // using same load control require also same looper
+        // if (loadControl != null) {
+        // builder.setLoadControl(loadControl.build());
+        // }
         loopingPlayer = builder.build();
         loopingPlayer.setVideoSurface(surface);
       }
@@ -906,6 +919,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
           }
         }
       });
+      loopingPlayer.setPlayWhenReady(player.getPlayWhenReady());
     } else {
       disposeLoopingPlayer();
     }
@@ -1267,6 +1281,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       closeSessionId(this.audioSessionId);
     }
     if (player != null) {
+      player.clearVideoSurface();
       player.release();
       player = null;
       processingState = ProcessingState.none;
