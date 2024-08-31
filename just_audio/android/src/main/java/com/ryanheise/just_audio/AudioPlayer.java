@@ -1287,6 +1287,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       processingState = ProcessingState.none;
       broadcastImmediatePlaybackEvent();
     }
+    disposeLoopingPlayer();
+
     eventChannel.endOfStream();
     dataEventChannel.endOfStream();
 
