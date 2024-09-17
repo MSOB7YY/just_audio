@@ -379,7 +379,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         processingState = ProcessingState.ready;
         broadcastImmediatePlaybackEvent();
         sendVideoInfo();
-        ppLoopingPlayer(true);
+        ppLoopingPlayer(player.getPlayWhenReady());
         if (prepareResult != null) {
           Map<String, Object> response = new HashMap<>();
           response.put("duration", getDuration() == C.TIME_UNSET ? null : (1000 * getDuration()));
@@ -919,7 +919,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
           }
         }
       });
-      loopingPlayer.setPlayWhenReady(player.getPlayWhenReady());
+      ppLoopingPlayer(player.getPlayWhenReady());
     } else {
       disposeLoopingPlayer();
     }
