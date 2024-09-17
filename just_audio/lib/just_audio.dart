@@ -811,6 +811,10 @@ class AudioPlayer {
   /// Set a video source, use null to disable video.
   /// This doesn't affect [setSource].
   Future<void> setVideo(VideoSourceOptions? video) async {
+    // ignore: unnecessary_this
+    this.videoOptions?.source._dispose();
+    this._videoOptions = video;
+
     return await (await _platform).setVideo(
       video == null
           ? null
@@ -861,6 +865,11 @@ class AudioPlayer {
         // the platform has changed since we started loading, so abort.
         throw PlatformException(code: 'abort', message: 'Loading interrupted');
       }
+    }
+
+    if (keepOldVideoSource == false) {
+      // ignore: unnecessary_this
+      this.videoOptions?.source._dispose();
     }
 
     try {
@@ -1233,21 +1242,30 @@ class AudioPlayer {
       await _disposePlatform(_idlePlatform!);
       _idlePlatform = null;
     }
+
+    // ignore: unnecessary_this
+    this.videoOptions?.source._dispose();
+    this.audioSource?._dispose();
+
     _audioSource = null;
+    _videoOptions = null;
     for (var s in _audioVideoSources.values) {
       s._dispose();
     }
     _audioVideoSources.clear();
     _proxy.stop();
-    await _durationSubject.close();
-    await _loopModeSubject.close();
-    await _shuffleModeEnabledSubject.close();
-    await _playingSubject.close();
-    await _volumeSubject.close();
-    await _speedSubject.close();
-    await _pitchSubject.close();
-    await _sequenceSubject.close();
-    await _shuffleIndicesSubject.close();
+
+    await [
+      _durationSubject.close(),
+      _loopModeSubject.close(),
+      _shuffleModeEnabledSubject.close(),
+      _playingSubject.close(),
+      _volumeSubject.close(),
+      _speedSubject.close(),
+      _pitchSubject.close(),
+      _sequenceSubject.close(),
+      _shuffleIndicesSubject.close(),
+    ].wait;
   }
 
   /// Switch to using the native platform when [active] is `true` and using the
@@ -2843,6 +2861,7 @@ class LockCachingVideoSource extends LockCachingSource {
 /// access to the file system (e.g. web).
 @experimental
 abstract class LockCachingSource extends StreamSource {
+  HttpClient? _httpClient;
   Future<HttpClientResponse>? _response;
   final Uri uri;
   final Map<String, String>? headers;
@@ -2850,6 +2869,9 @@ abstract class LockCachingSource extends StreamSource {
   final void Function(File cacheFile)? onCacheDone;
   int _progress = 0;
   final _requests = <_StreamingByteRangeRequest>[];
+  var _inProgressResponses = <_InProgressCacheResponse>[];
+  IOSink? _cacheSink;
+  late StreamSubscription<List<int>> _subscription;
   final _downloadProgressSubject = BehaviorSubject<double>();
   bool _downloading = false;
 
@@ -2955,17 +2977,19 @@ abstract class LockCachingSource extends StreamSource {
     File getEffectiveCacheFile() =>
         partialCacheFile.existsSync() ? partialCacheFile : cacheFile;
 
-    final httpClient = _createHttpClient(userAgent: _player?._userAgent);
-    final httpRequest = await _getUrl(httpClient, uri, headers: headers);
+    _httpClient?.close(force: true);
+
+    _httpClient = _createHttpClient(userAgent: _player?._userAgent);
+    final httpRequest = await _getUrl(_httpClient!, uri, headers: headers);
     final response = await httpRequest.close();
     if (response.statusCode != 200) {
-      httpClient.close();
+      _httpClient?.close();
       throw Exception('HTTP Status Error: ${response.statusCode}');
     }
     (await _partialCacheFile).createSync(recursive: true);
     // TODO: Should close sink after done, but it throws an error.
     // ignore: close_sinks
-    final sink = (await _partialCacheFile).openWrite();
+    _cacheSink = _partialCacheFile.openWrite();
     final sourceLength =
         response.contentLength == -1 ? null : response.contentLength;
     final mimeType = response.headers.contentType.toString();
@@ -2974,8 +2998,7 @@ abstract class LockCachingSource extends StreamSource {
         acceptRanges != null && acceptRanges != 'none';
     final mimeFile = await _mimeFile;
     await mimeFile.writeAsString(mimeType);
-    final inProgressResponses = <_InProgressCacheResponse>[];
-    late StreamSubscription<List<int>> subscription;
+    _inProgressResponses = <_InProgressCacheResponse>[];
     var percentProgress = 0;
     void updateProgress(int newPercentProgress) {
       if (newPercentProgress != percentProgress) {
@@ -2985,7 +3008,7 @@ abstract class LockCachingSource extends StreamSource {
     }
 
     _progress = 0;
-    subscription = response.listen((data) async {
+    _subscription = response.listen((data) async {
       _progress += data.length;
       final newPercentProgress = (sourceLength == null)
           ? 0
@@ -2993,7 +3016,7 @@ abstract class LockCachingSource extends StreamSource {
               ? 100
               : (100 * _progress ~/ sourceLength);
       updateProgress(newPercentProgress);
-      sink.add(data);
+      _cacheSink!.add(data);
       final readyRequests = _requests
           .where((request) =>
               !originSupportsRangeRequests ||
@@ -3007,7 +3030,7 @@ abstract class LockCachingSource extends StreamSource {
               (request.start!) >= _progress)
           .toList();
       // Add this live data to any responses in progress.
-      for (var cacheResponse in inProgressResponses) {
+      for (var cacheResponse in _inProgressResponses) {
         final end = cacheResponse.end;
         if (end != null && _progress >= end) {
           // We've received enough data to fulfill the byte range request.
@@ -3019,12 +3042,13 @@ abstract class LockCachingSource extends StreamSource {
           cacheResponse.controller.add(data);
         }
       }
-      inProgressResponses.removeWhere((element) => element.controller.isClosed);
+      _inProgressResponses
+          .removeWhere((element) => element.controller.isClosed);
       if (_requests.isEmpty) return;
       // Prevent further data coming from the HTTP source until we have set up
       // an entry in inProgressResponses to continue receiving live HTTP data.
-      subscription.pause();
-      await sink.flush();
+      _subscription.pause();
+      await _cacheSink!.flush();
       // Process any requests that start within the cache.
       for (var request in readyRequests) {
         _requests.remove(request);
@@ -3045,7 +3069,7 @@ abstract class LockCachingSource extends StreamSource {
               getEffectiveCacheFile().openRead(effectiveStart, effectiveEnd);
         } else {
           final cacheResponse = _InProgressCacheResponse(end: effectiveEnd);
-          inProgressResponses.add(cacheResponse);
+          _inProgressResponses.add(cacheResponse);
           responseStream = Rx.concatEager([
             // NOTE: The cache file part of the stream must not overlap with
             // the live part. "_progress" should
@@ -3064,7 +3088,7 @@ abstract class LockCachingSource extends StreamSource {
           stream: responseStream.asBroadcastStream(),
         ));
       }
-      subscription.resume();
+      _subscription.resume();
       // Process any requests that start beyond the cache.
       for (var request in notReadyRequests) {
         _requests.remove(request);
@@ -3100,26 +3124,26 @@ abstract class LockCachingSource extends StreamSource {
       if (sourceLength == null) {
         updateProgress(100);
       }
-      for (var cacheResponse in inProgressResponses) {
+      for (var cacheResponse in _inProgressResponses) {
         if (!cacheResponse.controller.isClosed) {
           cacheResponse.controller.close();
         }
       }
       (await _partialCacheFile).renameSync(cacheFile.path);
-      await subscription.cancel();
-      httpClient.close();
+      await _subscription.cancel();
+      _httpClient?.close();
       _downloading = false;
       if (onCacheDone != null) onCacheDone!(cacheFile);
     }, onError: (Object e, StackTrace stackTrace) async {
       (await _partialCacheFile).deleteSync();
-      httpClient.close();
+      _httpClient?.close();
       // Fail all pending requests
       for (final req in _requests) {
         req.fail(e, stackTrace);
       }
       _requests.clear();
       // Close all in progress requests
-      for (final res in inProgressResponses) {
+      for (final res in _inProgressResponses) {
         res.controller.addError(e, stackTrace);
         res.controller.close();
       }
@@ -3165,6 +3189,35 @@ abstract class LockCachingSource extends StreamSource {
       });
       return response;
     });
+  }
+
+  @override
+  void _dispose() async {
+    super._dispose();
+
+    await _cacheSink?.close().catchError((_) {});
+
+    // Fail all pending requests
+    for (final req in _requests) {
+      req.fail('disposed');
+    }
+    _requests.clear();
+
+    // Close all in progress requests
+    for (final res in _inProgressResponses) {
+      res.controller.close();
+    }
+
+    for (var cacheResponse in _inProgressResponses) {
+      if (!cacheResponse.controller.isClosed) {
+        cacheResponse.controller.close();
+      }
+    }
+    await _subscription.cancel();
+
+    _httpClient?.close(force: true);
+    _httpClient = null;
+    _downloading = false;
   }
 }
 
