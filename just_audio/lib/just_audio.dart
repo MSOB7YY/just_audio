@@ -2841,7 +2841,7 @@ class LockCachingAudioSource extends LockCachingSource {
     super.uri, {
     super.headers,
     super.onCacheDone,
-    super.cacheFile,
+    required super.cacheFile,
     super.tag,
   }) : super(fallbackMemeType: 'audio/mpeg');
 }
@@ -2851,7 +2851,7 @@ class LockCachingVideoSource extends LockCachingSource {
     super.uri, {
     super.headers,
     super.onCacheDone,
-    super.cacheFile,
+    required super.cacheFile,
     super.tag,
   }) : super(fallbackMemeType: 'video/mpeg');
 }
@@ -2865,7 +2865,7 @@ abstract class LockCachingSource extends StreamSource {
   Future<HttpClientResponse>? _response;
   final Uri uri;
   final Map<String, String>? headers;
-  final Future<File> cacheFile;
+  final File cacheFile;
   final void Function(File cacheFile)? onCacheDone;
   int _progress = 0;
   final _requests = <_StreamingByteRangeRequest>[];
@@ -2888,25 +2888,30 @@ abstract class LockCachingSource extends StreamSource {
     required this.headers,
     required this.onCacheDone,
     required this.fallbackMemeType,
-    File? cacheFile,
+    required this.cacheFile,
     super.tag,
-  }) : cacheFile =
-            cacheFile != null ? Future.value(cacheFile) : _getCacheFile(uri) {
+  })  : _partialCacheFile = File('${cacheFile.path}.part'),
+        _mimeFile = File('${cacheFile.path}.mime') {
     _init();
   }
 
-  Future<void> _init() async {
-    final cacheFile = await this.cacheFile;
-    _downloadProgressSubject.add((await cacheFile.exists()) ? 1.0 : 0.0);
+  final File _partialCacheFile;
+
+  /// We use this to record the original content type of the downloaded audio.
+  /// NOTE: We could instead rely on the cache file extension, but the original
+  /// URL might not provide a correct extension. As a fallback, we could map the
+  /// MIME type to an extension but we will need a complete dictionary.
+  final File _mimeFile;
+
+  void _init() {
+    _downloadProgressSubject.add((cacheFile.existsSync()) ? 1.0 : 0.0);
   }
 
   /// Returns a [UriSource] resolving directly to the cache file if it
   /// exists, otherwise returns `this`. This can be
-  Future<IndexedSource> resolve() async {
-    final file = await cacheFile;
-    return await file.exists()
-        ? AudioVideoSource.uri(Uri.file(file.path))
-        : this;
+  IndexedSource resolve() {
+    final file = cacheFile;
+    return file.existsSync() ? AudioVideoSource.uri(Uri.file(file.path)) : this;
   }
 
   /// Emits the current download progress as a double value from 0.0 (nothing
@@ -2920,11 +2925,11 @@ abstract class LockCachingSource extends StreamSource {
       throw Exception("Cannot clear cache while download is in progress");
     }
     _response = null;
-    final cacheFile = await this.cacheFile;
+    final cacheFile = this.cacheFile;
     if (await cacheFile.exists()) {
       await cacheFile.delete();
     }
-    final mimeFile = await _mimeFile;
+    final mimeFile = _mimeFile;
     if (await mimeFile.exists()) {
       await mimeFile.delete();
     }
@@ -2933,26 +2938,17 @@ abstract class LockCachingSource extends StreamSource {
   }
 
   /// Get file for caching [uri] with proper extension
-  static Future<File> _getCacheFile(final Uri uri) async => File(p.joinAll([
+  static Future<File> generateCacheFile(final Uri uri) async => File(p.joinAll([
         (await _getCacheDir()).path,
         'remote',
         sha256.convert(utf8.encode(uri.toString())).toString() +
             p.extension(uri.path),
       ]));
 
-  Future<File> get _partialCacheFile async =>
-      File('${(await cacheFile).path}.part');
-
-  /// We use this to record the original content type of the downloaded audio.
-  /// NOTE: We could instead rely on the cache file extension, but the original
-  /// URL might not provide a correct extension. As a fallback, we could map the
-  /// MIME type to an extension but we will need a complete dictionary.
-  Future<File> get _mimeFile async => File('${(await cacheFile).path}.mime');
-
-  Future<String> _readCachedMimeType() async {
-    final file = await _mimeFile;
+  String _readCachedMimeTypeSync() {
+    final file = _mimeFile;
     if (file.existsSync()) {
-      return (await _mimeFile).readAsString();
+      return _mimeFile.readAsStringSync();
     } else {
       return fallbackMemeType;
     }
@@ -2971,8 +2967,8 @@ abstract class LockCachingSource extends StreamSource {
   /// entire file continues in parallel.
   Future<HttpClientResponse> _fetch() async {
     _downloading = true;
-    final cacheFile = await this.cacheFile;
-    final partialCacheFile = await _partialCacheFile;
+    final cacheFile = this.cacheFile;
+    final partialCacheFile = _partialCacheFile;
 
     File getEffectiveCacheFile() =>
         partialCacheFile.existsSync() ? partialCacheFile : cacheFile;
@@ -2986,7 +2982,7 @@ abstract class LockCachingSource extends StreamSource {
       _httpClient?.close();
       throw Exception('HTTP Status Error: ${response.statusCode}');
     }
-    (await _partialCacheFile).createSync(recursive: true);
+    _partialCacheFile.createSync(recursive: true);
     // TODO: Should close sink after done, but it throws an error.
     // ignore: close_sinks
     _cacheSink = _partialCacheFile.openWrite();
@@ -2996,7 +2992,7 @@ abstract class LockCachingSource extends StreamSource {
     final acceptRanges = response.headers.value(HttpHeaders.acceptRangesHeader);
     final originSupportsRangeRequests =
         acceptRanges != null && acceptRanges != 'none';
-    final mimeFile = await _mimeFile;
+    final mimeFile = _mimeFile;
     await mimeFile.writeAsString(mimeType);
     _inProgressResponses = <_InProgressCacheResponse>[];
     var percentProgress = 0;
@@ -3129,13 +3125,13 @@ abstract class LockCachingSource extends StreamSource {
           cacheResponse.controller.close();
         }
       }
-      (await _partialCacheFile).renameSync(cacheFile.path);
+      _partialCacheFile.renameSync(cacheFile.path);
       await _subscription.cancel();
       _httpClient?.close();
       _downloading = false;
       if (onCacheDone != null) onCacheDone!(cacheFile);
     }, onError: (Object e, StackTrace stackTrace) async {
-      (await _partialCacheFile).deleteSync();
+      _partialCacheFile.deleteSync();
       _httpClient?.close();
       // Fail all pending requests
       for (final req in _requests) {
@@ -3154,7 +3150,7 @@ abstract class LockCachingSource extends StreamSource {
 
   @override
   Future<StreamAudioResponse> request([int? start, int? end]) async {
-    final cacheFile = await this.cacheFile;
+    final cacheFile = this.cacheFile;
     if (cacheFile.existsSync()) {
       final sourceLength = cacheFile.lengthSync();
       return StreamAudioResponse(
@@ -3162,7 +3158,7 @@ abstract class LockCachingSource extends StreamSource {
         sourceLength: start != null ? sourceLength : null,
         contentLength: (end ?? sourceLength) - (start ?? 0),
         offset: start,
-        contentType: await _readCachedMimeType(),
+        contentType: _readCachedMimeTypeSync(),
         stream: cacheFile.openRead(start, end).asBroadcastStream(),
       );
     }

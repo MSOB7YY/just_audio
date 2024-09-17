@@ -23,16 +23,21 @@ class MyApp extends StatefulWidget {
 
 class MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final _player = AudioPlayer();
-  final _audioSource = LockCachingAudioSource(Uri.parse(
-    // Supports range requests:
-    "https://dovetail.prxu.org/70/66673fd4-6851-4b90-a762-7c0538c76626/CoryCombs_2021T_VO_Intro.mp3",
-    // Doesn't support range requests:
-    //"https://filesamples.com/samples/audio/mp3/sample4.mp3",
-  ));
+
+  late LockCachingAudioSource _audioSource;
 
   @override
   void initState() {
     super.initState();
+    final uri = Uri.parse(
+      // Supports range requests:
+      "https://dovetail.prxu.org/70/66673fd4-6851-4b90-a762-7c0538c76626/CoryCombs_2021T_VO_Intro.mp3",
+      // Doesn't support range requests:
+      //"https://filesamples.com/samples/audio/mp3/sample4.mp3",
+    );
+    LockCachingSource.generateCacheFile(uri).then((value) =>
+        _audioSource = LockCachingAudioSource(uri, cacheFile: value));
+
     ambiguate(WidgetsBinding.instance)!.addObserver(this);
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.black,
