@@ -2871,7 +2871,7 @@ abstract class LockCachingSource extends StreamSource {
   final _requests = <_StreamingByteRangeRequest>[];
   var _inProgressResponses = <_InProgressCacheResponse>[];
   IOSink? _cacheSink;
-  late StreamSubscription<List<int>> _subscription;
+  StreamSubscription<List<int>>? _subscription;
   final _downloadProgressSubject = BehaviorSubject<double>();
   bool _downloading = false;
 
@@ -3043,7 +3043,7 @@ abstract class LockCachingSource extends StreamSource {
       if (_requests.isEmpty) return;
       // Prevent further data coming from the HTTP source until we have set up
       // an entry in inProgressResponses to continue receiving live HTTP data.
-      _subscription.pause();
+      _subscription?.pause();
       await _cacheSink!.flush();
       // Process any requests that start within the cache.
       for (var request in readyRequests) {
@@ -3084,7 +3084,7 @@ abstract class LockCachingSource extends StreamSource {
           stream: responseStream.asBroadcastStream(),
         ));
       }
-      _subscription.resume();
+      _subscription?.resume();
       // Process any requests that start beyond the cache.
       for (var request in notReadyRequests) {
         _requests.remove(request);
@@ -3126,7 +3126,7 @@ abstract class LockCachingSource extends StreamSource {
         }
       }
       _partialCacheFile.renameSync(cacheFile.path);
-      await _subscription.cancel();
+      await _subscription?.cancel();
       _httpClient?.close();
       _downloading = false;
       if (onCacheDone != null) onCacheDone!(cacheFile);
@@ -3209,7 +3209,7 @@ abstract class LockCachingSource extends StreamSource {
         cacheResponse.controller.close();
       }
     }
-    await _subscription.cancel();
+    await _subscription?.cancel();
 
     _httpClient?.close(force: true);
     _httpClient = null;
