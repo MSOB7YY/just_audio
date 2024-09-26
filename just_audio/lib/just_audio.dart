@@ -758,13 +758,18 @@ class AudioPlayer {
   }) async {
     if (_disposed) return null;
     _audioSource = null;
+    if (keepOldVideoSource == false) {
+      this._videoOptions?.source._dispose();
+      this._videoOptions = null;
+    }
+
     _initialSeekValues =
         _InitialSeekValues(position: initialPosition, index: initialIndex);
     _playbackEventSubject.add(_playbackEvent = PlaybackEvent(
         currentIndex: initialIndex ?? 0,
         updatePosition: initialPosition ?? Duration.zero));
     _audioSource = source;
-    _videoOptions = videoOptions;
+    if (keepOldVideoSource == false) _videoOptions = videoOptions;
     _keepOldVideoSource = keepOldVideoSource;
     _broadcastSequence();
     Duration? duration;
@@ -813,6 +818,7 @@ class AudioPlayer {
   Future<void> setVideo(VideoSourceOptions? video) async {
     // ignore: unnecessary_this
     this.videoOptions?.source._dispose();
+    this._videoOptions = null;
     this._videoOptions = video;
 
     return await (await _platform).setVideo(
@@ -865,11 +871,6 @@ class AudioPlayer {
         // the platform has changed since we started loading, so abort.
         throw PlatformException(code: 'abort', message: 'Loading interrupted');
       }
-    }
-
-    if (keepOldVideoSource == false) {
-      // ignore: unnecessary_this
-      this.videoOptions?.source._dispose();
     }
 
     try {
@@ -3191,13 +3192,12 @@ abstract class LockCachingSource extends StreamSource {
   void _dispose() async {
     super._dispose();
 
-    await _cacheSink?.close().catchError((_) {});
-
     // Fail all pending requests
     for (final req in _requests) {
       req.fail('disposed');
     }
     _requests.clear();
+    _response = null;
 
     // Close all in progress requests
     for (final res in _inProgressResponses) {
@@ -3214,6 +3214,8 @@ abstract class LockCachingSource extends StreamSource {
     _httpClient?.close(force: true);
     _httpClient = null;
     _downloading = false;
+
+    await _cacheSink?.close().catchError((_) {});
   }
 }
 
