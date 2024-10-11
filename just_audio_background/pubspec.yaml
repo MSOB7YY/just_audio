@@ -1,7 +1,7 @@
 name: just_audio_background
 description: An add-on for just_audio that supports background playback and media notifications.
 homepage: https://github.com/ryanheise/just_audio/tree/master/just_audio_background
-version: 0.0.3-beta.10
+version: 0.0.3-beta.11
 topics:
   - audio
   - sound
@@ -15,6 +15,7 @@ dependencies:
   just_audio_platform_interface:
     git:
       url: https://github.com/MSOB7YY/just_audio
+      ref: video
       path: just_audio_platform_interface/
   audio_service: ^0.18.9
   audio_session: ^0.1.14
