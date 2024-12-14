@@ -63,9 +63,10 @@ public class MainMethodCallHandler implements MethodCallHandler {
     switch (call.method) {
       case "init": {
         final String id = call.argument("id");
-        if (players.containsKey(id)) {
-          result.error("Platform player " + id + " already exists", null, null);
-          break;
+        AudioPlayer oldplayer = players.get(id);
+        if (oldplayer != null) {
+          oldplayer.dispose();
+          players.remove(id);
         }
         latestId = id;
         final List<Object> rawAudioEffects = call.argument("androidAudioEffects");
