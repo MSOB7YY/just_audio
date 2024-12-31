@@ -94,6 +94,7 @@ public class MainMethodCallHandler implements MethodCallHandler {
         result.success(new HashMap<String, Object>());
         AudioPlayer.mediaSources.clear();
         AudioPlayer.videoSources.clear();
+        players.clear();
         break;
       }
       default:

@@ -3126,7 +3126,11 @@ abstract class LockCachingSource extends StreamSource {
           cacheResponse.controller.close();
         }
       }
-      _partialCacheFile.renameSync(cacheFile.path);
+      try {
+        _partialCacheFile.renameSync(cacheFile.path);
+      } catch (_) {
+        // -- file already renamed.
+      }
       await _subscription?.cancel();
       _httpClient?.close();
       _downloading = false;
