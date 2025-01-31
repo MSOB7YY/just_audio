@@ -3,10 +3,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:audio_session/audio_session.dart';
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
+import 'package:audio_session/audio_session.dart';
+import 'package:crypto/crypto.dart';
 import 'package:just_audio_platform_interface/just_audio_platform_interface.dart';
 import 'package:meta/meta.dart' show experimental;
 import 'package:path/path.dart' as p;
@@ -142,6 +143,12 @@ class AudioPlayer {
   final bool _androidApplyAudioAttributes;
   final bool _handleAudioSessionActivation;
 
+  StreamSubscription<AndroidAudioAttributes>?
+      _androidAudioAttributesSubscription;
+  StreamSubscription<void>? _becomingNoisyEventSubscription;
+  StreamSubscription<AudioInterruptionEvent>? _interruptionEventSubscription;
+  StreamSubscription<List<PlaybackEvent>>? _playbackEventStreamSub;
+
   /// Counts how many times [_setPlatformActive] is called.
   int _activationCount = 0;
 
@@ -201,7 +208,7 @@ class AudioPlayer {
         .map((event) => event.icyMetadata)
         .distinct()
         .handleError((Object err, StackTrace stackTrace) {/* noop */}));
-    playbackEventStream.pairwise().listen((pair) {
+    _playbackEventStreamSub = playbackEventStream.pairwise().listen((pair) {
       final prev = pair.first;
       final curr = pair.last;
       // Detect auto-advance
@@ -273,7 +280,7 @@ class AudioPlayer {
     // Respond to changes to AndroidAudioAttributes configuration.
     if (androidApplyAudioAttributes && _isAndroid()) {
       AudioSession.instance.then((audioSession) {
-        audioSession.configurationStream
+        _androidAudioAttributesSubscription = audioSession.configurationStream
             .map((conf) => conf.androidAudioAttributes)
             .where((attributes) => attributes != null)
             .cast<AndroidAudioAttributes>()
@@ -283,10 +290,12 @@ class AudioPlayer {
     }
     if (handleInterruptions) {
       AudioSession.instance.then((session) {
-        session.becomingNoisyEventStream.listen((_) {
+        _becomingNoisyEventSubscription =
+            session.becomingNoisyEventStream.listen((_) {
           pause();
         });
-        session.interruptionEventStream.listen((event) {
+        _interruptionEventSubscription =
+            session.interruptionEventStream.listen((event) {
           if (event.begin) {
             switch (event.type) {
               case AudioInterruptionType.duck:
@@ -759,8 +768,8 @@ class AudioPlayer {
     if (_disposed) return null;
     _audioSource = null;
     if (keepOldVideoSource == false) {
-      this._videoOptions?.source._dispose();
-      this._videoOptions = null;
+      _videoOptions?.source._dispose();
+      _videoOptions = null;
     }
 
     _initialSeekValues =
@@ -818,8 +827,8 @@ class AudioPlayer {
   Future<void> setVideo(VideoSourceOptions? video) async {
     // ignore: unnecessary_this
     this.videoOptions?.source._dispose();
-    this._videoOptions = null;
-    this._videoOptions = video;
+    _videoOptions = null;
+    _videoOptions = video;
 
     return await (await _platform).setVideo(
       video == null
@@ -1246,7 +1255,7 @@ class AudioPlayer {
 
     // ignore: unnecessary_this
     this.videoOptions?.source._dispose();
-    this.audioSource?._dispose();
+    audioSource?._dispose();
 
     _audioSource = null;
     _videoOptions = null;
@@ -1266,6 +1275,13 @@ class AudioPlayer {
       _pitchSubject.close(),
       _sequenceSubject.close(),
       _shuffleIndicesSubject.close(),
+      if (_playbackEventStreamSub != null) _playbackEventStreamSub!.cancel(),
+      if (_androidAudioAttributesSubscription != null)
+        _androidAudioAttributesSubscription!.cancel(),
+      if (_becomingNoisyEventSubscription != null)
+        _becomingNoisyEventSubscription!.cancel(),
+      if (_interruptionEventSubscription != null)
+        _interruptionEventSubscription!.cancel(),
     ].wait;
   }
 
@@ -2029,6 +2045,7 @@ class AndroidLivePlaybackSpeedControl {
 /// A local proxy HTTP server for making remote GET requests with headers.
 class _ProxyHttpServer {
   late HttpServer _server;
+  StreamSubscription<HttpRequest>? _serverSub;
   bool _running = false;
 
   /// Maps request keys to [_ProxyHandler]s.
@@ -2087,7 +2104,7 @@ class _ProxyHttpServer {
   Future<dynamic> start() async {
     _running = true;
     _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    _server.listen((request) async {
+    _serverSub = _server.listen((request) async {
       if (request.method == 'GET') {
         final uriPath = _requestKey(request.uri);
         final handler = _handlerMap[uriPath]!;
@@ -2102,6 +2119,7 @@ class _ProxyHttpServer {
 
   /// Stops the server
   Future<dynamic> stop() async {
+    _serverSub?.cancel();
     if (!_running) return;
     _running = false;
     return await _server.close();
@@ -3432,15 +3450,21 @@ _ProxyHandler _proxyHandlerForUri(
         final clientSocket =
             await request.response.detachSocket(writeHeaders: false);
         final done = Completer<dynamic>();
-        socket.listen(
+        StreamSubscription<Uint8List>? socketSub;
+        void disposeSocket() async {
+          await clientSocket.flush();
+          socket.close();
+          socketSub?.cancel();
+          clientSocket.close();
+          done.complete();
+        }
+
+        socketSub = socket.listen(
           clientSocket.add,
-          onDone: () async {
-            await clientSocket.flush();
-            socket.close();
-            clientSocket.close();
-            done.complete();
-          },
+          onDone: disposeSocket,
+          onError: disposeSocket,
         );
+
         // Rewrite headers
         final headers = <String, String?>{};
         request.headers.forEach((name, value) {
@@ -3566,6 +3590,7 @@ class _IdleAudioPlayer extends AudioPlayerPlatform {
   late Duration _position;
   int? _index;
   List<IndexedSource>? _sequence;
+  StreamSubscription<List<IndexedSource>?>? _sequenceSub;
 
   /// Holds a pending request.
   SetAndroidAudioAttributesRequest? setAndroidAudioAttributesRequest;
@@ -3574,7 +3599,7 @@ class _IdleAudioPlayer extends AudioPlayerPlatform {
     required String id,
     required Stream<List<IndexedSource>?> sequenceStream,
   }) : super(id) {
-    sequenceStream.listen((sequence) => _sequence = sequence);
+    _sequenceSub = sequenceStream.listen((sequence) => _sequence = sequence);
   }
 
   void _broadcastPlaybackEvent() {
@@ -3697,6 +3722,7 @@ class _IdleAudioPlayer extends AudioPlayerPlatform {
 
   @override
   Future<DisposeResponse> dispose(DisposeRequest request) async {
+    _sequenceSub?.cancel();
     return DisposeResponse();
   }
 
