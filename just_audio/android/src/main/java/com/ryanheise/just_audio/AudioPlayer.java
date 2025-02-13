@@ -1267,18 +1267,9 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     }
   }
 
-  public void dispose() {
+  public void freeTemporarily() {
     if (processingState == ProcessingState.loading) {
       abortExistingConnection();
-    }
-    if (playResult != null) {
-      playResult.success(new HashMap<String, Object>());
-      playResult = null;
-    }
-    mediaSource = null;
-    clearAudioEffects();
-    if (this.audioSessionId != null) {
-      closeSessionId(this.audioSessionId);
     }
     if (player != null) {
       player.clearVideoSurface();
@@ -1288,6 +1279,24 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       broadcastImmediatePlaybackEvent();
     }
     disposeLoopingPlayer();
+    mediaSource = null;
+  }
+
+  public void dispose() {
+    freeTemporarily();
+    if (player != null) {
+      player.clearVideoSurface();
+    }
+
+    if (playResult != null) {
+      playResult.success(new HashMap<String, Object>());
+      playResult = null;
+    }
+
+    clearAudioEffects();
+    if (this.audioSessionId != null) {
+      closeSessionId(this.audioSessionId);
+    }
 
     eventChannel.endOfStream();
     dataEventChannel.endOfStream();
@@ -1298,6 +1307,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     surfaceTextureEntry.release();
     if (surface != null) {
       surface.release();
+      surface = null;
     }
   }
 

@@ -1239,6 +1239,13 @@ class AudioPlayer {
         usage: audioAttributes.usage.value));
   }
 
+  Future<void> freePlayer() async {
+    if (_disposed) return;
+    if (_nativePlatform != null) {
+      return _freePlatform(await _nativePlatform!);
+    }
+  }
+
   /// Release all resources associated with this player. You must invoke this
   /// after you are done with the player.
   Future<void> dispose() async {
@@ -1564,6 +1571,23 @@ class AudioPlayer {
         // Fallback if disposePlayer hasn't been implemented.
         try {
           await platform.dispose(DisposeRequest());
+        } catch (_) {}
+      }
+    }
+  }
+
+  Future<void> _freePlatform(AudioPlayerPlatform platform) async {
+    if (platform is _IdleAudioPlayer) {
+      await platform.freeTemporarily(FreeRequest());
+    } else {
+      _nativePlatform = null;
+      try {
+        _videoInfoSubject.add(VideoDataMessage.dummy());
+        await _pluginPlatform.freePlayer(DisposePlayerRequest(id: _id));
+      } catch (e) {
+        // Fallback if disposePlayer hasn't been implemented.
+        try {
+          await platform.freeTemporarily(FreeRequest());
         } catch (_) {}
       }
     }
@@ -3724,6 +3748,12 @@ class _IdleAudioPlayer extends AudioPlayerPlatform {
   Future<DisposeResponse> dispose(DisposeRequest request) async {
     _sequenceSub?.cancel();
     return DisposeResponse();
+  }
+
+  @override
+  Future<FreeResponse> freeTemporarily(FreeRequest request) async {
+    _sequenceSub?.cancel();
+    return FreeResponse();
   }
 
   @override

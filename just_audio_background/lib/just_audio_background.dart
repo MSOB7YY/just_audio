@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:audio_service/audio_service.dart';
 import 'package:just_audio_platform_interface/just_audio_platform_interface.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -135,6 +136,14 @@ class _JustAudioBackgroundPlugin extends JustAudioPlatform {
       initRequest: request,
     );
     return _player!;
+  }
+
+  @override
+  Future<DisposePlayerResponse> freePlayer(DisposePlayerRequest request) async {
+    final player = _player;
+    _player = null;
+    await player?.release();
+    return DisposePlayerResponse();
   }
 
   @override

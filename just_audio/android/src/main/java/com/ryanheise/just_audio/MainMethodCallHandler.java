@@ -76,6 +76,15 @@ public class MainMethodCallHandler implements MethodCallHandler {
         result.success(null);
         break;
       }
+      case "freePlayer": {
+        String id = call.argument("id");
+        AudioPlayer player = players.get(id);
+        if (player != null) {
+          player.freeTemporarily();
+        }
+        result.success(new HashMap<String, Object>());
+        break;
+      }
       case "disposePlayer": {
         String id = call.argument("id");
         AudioPlayer player = players.get(id);

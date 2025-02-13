@@ -40,6 +40,10 @@ abstract class JustAudioPlatform extends PlatformInterface {
     throw UnimplementedError('init() has not been implemented.');
   }
 
+  Future<DisposePlayerResponse> freePlayer(DisposePlayerRequest request) {
+    throw UnimplementedError('freePlayer() has not been implemented.');
+  }
+
   /// Disposes of a platform player.
   Future<DisposePlayerResponse> disposePlayer(DisposePlayerRequest request) {
     throw UnimplementedError('disposePlayer() has not been implemented.');
@@ -196,6 +200,10 @@ abstract class AudioPlayerPlatform {
   /// fallback if [JustAudioPlatform.disposePlayer] is not implemented.
   Future<DisposeResponse> dispose(DisposeRequest request) {
     throw UnimplementedError("dispose() has not been implemented.");
+  }
+
+  Future<FreeResponse> freeTemporarily(FreeRequest request) {
+    throw UnimplementedError("freeTemporarily() has not been implemented.");
   }
 
   /// Inserts audio sources into the given concatenating audio source.
@@ -877,6 +885,14 @@ class DisposeRequest {
 class DisposeResponse {
   static DisposeResponse fromMap(Map<dynamic, dynamic> map) =>
       DisposeResponse();
+}
+
+class FreeRequest {
+  Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{};
+}
+
+class FreeResponse {
+  static FreeResponse fromMap(Map<dynamic, dynamic> map) => FreeResponse();
 }
 
 /// Information communicated to the platform implementation when inserting audio
