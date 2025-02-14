@@ -775,11 +775,14 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   }
 
   private void clearAudioEffects() {
-    for (Iterator<AudioEffect> it = audioEffects.iterator(); it.hasNext();) {
-      AudioEffect audioEffect = it.next();
-      audioEffect.release();
-      it.remove();
+    for (AudioEffect eff : audioEffects) {
+      try {
+        eff.release();
+      } catch (Exception e) {
+        //
+      }
     }
+    audioEffects.clear();
     audioEffectsMap.clear();
   }
 
@@ -1272,7 +1275,6 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       abortExistingConnection();
     }
     if (player != null) {
-      player.clearVideoSurface();
       player.release();
       player = null;
       processingState = ProcessingState.none;
