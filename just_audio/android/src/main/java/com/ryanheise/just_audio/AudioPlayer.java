@@ -114,7 +114,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private Map<String, Object> pendingPlaybackEvent;
 
   private final BetterEventChannel videoEventChannel;
-  private final TextureRegistry.SurfaceTextureEntry surfaceTextureEntry;
+  private TextureRegistry.SurfaceTextureEntry surfaceTextureEntry;
   private Surface surface;
   private VideoOptions videoOptions;
 
@@ -162,8 +162,12 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       TextureRegistry textureRegistry) {
     this.context = applicationContext;
     this.rawAudioEffects = rawAudioEffects;
-    this.surfaceTextureEntry = textureRegistry.createSurfaceTexture();
-    surface = new Surface(this.surfaceTextureEntry.surfaceTexture());
+    try {
+      this.surfaceTextureEntry = textureRegistry.createSurfaceTexture();
+      surface = new Surface(this.surfaceTextureEntry.surfaceTexture());
+    } catch (Exception e) {
+      //
+    }
     methodChannel = new MethodChannel(messenger, "com.ryanheise.just_audio.methods." + id);
     methodChannel.setMethodCallHandler(this);
     eventChannel = new BetterEventChannel(messenger, "com.ryanheise.just_audio.events." + id);
@@ -908,7 +912,9 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         // builder.setLoadControl(loadControl.build());
         // }
         loopingPlayer = builder.build();
-        loopingPlayer.setVideoSurface(surface);
+        if (surface != null) {
+          loopingPlayer.setVideoSurface(surface);
+        }
       }
       loopingPlayer.setMediaSource(this.videoOptions.source);
       loopingPlayer.prepare();
@@ -946,7 +952,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private void sendVideoInfo() {
     final Map<String, Object> videoInfoMap = new HashMap<String, Object>();
     final Format videoInfo = (loopingPlayer != null ? loopingPlayer : player).getVideoFormat();
-    videoInfoMap.put("textureId", videoOptions == null || videoInfo == null ? -1 : surfaceTextureEntry.id());
+    videoInfoMap.put("textureId", videoOptions == null || videoInfo == null || surfaceTextureEntry == null ? -1 : surfaceTextureEntry.id());
     if (videoInfo != null) {
       videoInfoMap.put("id", videoInfo.id);
       videoInfoMap.put("width", videoInfo.width);
@@ -998,7 +1004,9 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       builder.setRenderersFactory(renderersFactory);
       player = builder.build();
       setAudioSessionId(player.getAudioSessionId());
-      player.setVideoSurface(surface);
+      if (surface != null) {
+        player.setVideoSurface(surface);
+      }
       player.addListener(this);
     }
   }
