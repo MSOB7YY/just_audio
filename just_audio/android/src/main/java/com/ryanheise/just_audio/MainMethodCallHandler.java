@@ -2,11 +2,11 @@ package com.ryanheise.just_audio;
 
 import android.content.Context;
 import android.util.Rational;
-import android.view.Surface;
 
 import androidx.annotation.NonNull;
 import androidx.media3.common.util.UnstableApi;
 
+import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
@@ -21,9 +21,8 @@ import java.util.Map;
 @UnstableApi
 public class MainMethodCallHandler implements MethodCallHandler {
 
-  private final Context applicationContext;
+  private final FlutterPlugin.FlutterPluginBinding binding;
   private final BinaryMessenger messenger;
-  private final TextureRegistry textureRegistry;
 
   static private final Map<String, AudioPlayer> players = new HashMap<>();
   static private String latestId;
@@ -52,10 +51,9 @@ public class MainMethodCallHandler implements MethodCallHandler {
     return pl == null ? null : pl.getVideoRational();
   }
 
-  public MainMethodCallHandler(Context applicationContext, BinaryMessenger messenger, TextureRegistry textureRegistry) {
-    this.applicationContext = applicationContext;
+  public MainMethodCallHandler(FlutterPlugin.FlutterPluginBinding binding, BinaryMessenger messenger) {
+    this.binding = binding;
     this.messenger = messenger;
-    this.textureRegistry = textureRegistry;
   }
 
   @Override
@@ -70,7 +68,16 @@ public class MainMethodCallHandler implements MethodCallHandler {
         }
         latestId = id;
         final List<Object> rawAudioEffects = call.argument("androidAudioEffects");
-        final TextureRegistry.SurfaceProducer surface = textureRegistry.createSurfaceProducer();
+
+        Context applicationContext = binding.getApplicationContext();
+        BinaryMessenger messenger = this.messenger != null ? this.messenger : binding.getBinaryMessenger();
+        TextureRegistry textureRegistry = null;
+        try {
+          textureRegistry = binding.getTextureRegistry();
+        } catch (Exception e) {
+          //
+        }
+
         players.put(id, new AudioPlayer(applicationContext, messenger, id, call.argument("audioLoadConfiguration"),
             rawAudioEffects, textureRegistry));
         result.success(null);
@@ -91,7 +98,7 @@ public class MainMethodCallHandler implements MethodCallHandler {
         if (player != null) {
           player.dispose();
           players.remove(id);
-          if (latestId == id)
+          if (latestId.equals(id))
             latestId = null;
         }
         result.success(new HashMap<String, Object>());

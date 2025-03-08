@@ -13,6 +13,7 @@ import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
+import io.flutter.view.TextureRegistry;
 
 /**
  * JustAudioPlugin
@@ -23,9 +24,8 @@ import io.flutter.plugin.common.MethodChannel.Result;
 
   @Override
   public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
-    Context applicationContext = binding.getApplicationContext();
     BinaryMessenger messenger = binding.getBinaryMessenger();
-    methodCallHandler = new MainMethodCallHandler(applicationContext, messenger, binding.getTextureRegistry());
+    methodCallHandler = new MainMethodCallHandler(binding, messenger);
 
     channel = new MethodChannel(messenger, "com.ryanheise.just_audio.methods");
     channel.setMethodCallHandler(methodCallHandler);
