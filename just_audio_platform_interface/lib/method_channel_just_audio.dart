@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 
@@ -53,12 +54,14 @@ class MethodChannelAudioPlayer extends AudioPlayerPlatform {
           .map((dynamic map) =>
               PlayerDataMessage.fromMap(map as Map<dynamic, dynamic>));
 
+  /// NOTE: Android Only.
   @override
-  Stream<VideoDataMessage> get videoDataMessageStream =>
-      EventChannel('com.ryanheise.just_audio.video.$id')
+  Stream<VideoDataMessage> get videoDataMessageStream => Platform.isAndroid
+      ? EventChannel('com.ryanheise.just_audio.video.$id')
           .receiveBroadcastStream()
           .map((dynamic map) =>
-              VideoDataMessage.fromMap(map as Map<dynamic, dynamic>));
+              VideoDataMessage.fromMap(map as Map<dynamic, dynamic>))
+      : const Stream<VideoDataMessage>.empty();
 
   @override
   Future<LoadResponse> load(LoadRequest request) async {
