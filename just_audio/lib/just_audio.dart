@@ -2224,6 +2224,7 @@ class VideoSourceOptions {
 /// not be used simultaneously by more than one [AudioPlayer].
 abstract class AudioVideoSource {
   final String _id;
+  final VoidCallback? onDispose;
   AudioPlayer? _player;
 
   /// Creates an [AudioVideoSource] from a [Uri] with optional headers by
@@ -2239,16 +2240,18 @@ abstract class AudioVideoSource {
   ///
   /// If headers are set, just_audio will create a cleartext local HTTP proxy on
   /// your device to forward HTTP requests with headers included.
-  static UriSource uri(Uri uri, {Map<String, String>? headers, dynamic tag}) {
+  static UriSource uri(Uri uri,
+      {Map<String, String>? headers, dynamic tag, VoidCallback? onDispose}) {
     bool hasExtension(Uri uri, String extension) =>
         uri.path.toLowerCase().endsWith('.$extension') ||
         uri.fragment.toLowerCase().endsWith('.$extension');
     if (hasExtension(uri, 'mpd')) {
-      return DashSource(uri, headers: headers, tag: tag);
+      return DashSource(uri, headers: headers, tag: tag, onDispose: onDispose);
     } else if (hasExtension(uri, 'm3u8')) {
-      return HlsSource(uri, headers: headers, tag: tag);
+      return HlsSource(uri, headers: headers, tag: tag, onDispose: onDispose);
     } else {
-      return ProgressiveSource(uri, headers: headers, tag: tag);
+      return ProgressiveSource(uri,
+          headers: headers, tag: tag, onDispose: onDispose);
     }
   }
 
@@ -2259,8 +2262,10 @@ abstract class AudioVideoSource {
   /// ```
   /// Source.uri(Uri.file(filePath));
   /// ```
-  static UriSource file(String filePath, {dynamic tag}) {
-    return AudioVideoSource.uri(Uri.file(filePath), tag: tag);
+  static UriSource file(String filePath,
+      {dynamic tag, VoidCallback? onDispose}) {
+    return AudioVideoSource.uri(Uri.file(filePath),
+        tag: tag, onDispose: onDispose);
   }
 
   /// Convenience method to create an audio source for an asset.
@@ -2273,13 +2278,15 @@ abstract class AudioVideoSource {
   ///
   /// If the asset is to be loaded from a different package, the [package]
   /// parameter must be given to specify the package name.
-  static UriSource asset(String assetPath, {String? package, dynamic tag}) {
+  static UriSource asset(String assetPath,
+      {String? package, dynamic tag, VoidCallback? onDispose}) {
     final keyName =
         package == null ? assetPath : 'packages/$package/$assetPath';
-    return AudioVideoSource.uri(Uri.parse('asset:///$keyName'), tag: tag);
+    return AudioVideoSource.uri(Uri.parse('asset:///$keyName'),
+        tag: tag, onDispose: onDispose);
   }
 
-  AudioVideoSource() : _id = _uuid.v4();
+  AudioVideoSource({this.onDispose}) : _id = _uuid.v4();
 
   @mustCallSuper
   Future<void> _setup(AudioPlayer player) async {
@@ -2293,6 +2300,7 @@ abstract class AudioVideoSource {
   void _dispose() {
     // Without this we might make _player "late".
     _player = null;
+    onDispose?.call();
   }
 
   SourceMessage _toMessage();
@@ -2316,7 +2324,7 @@ abstract class IndexedSource extends AudioVideoSource {
   final dynamic tag;
   Duration? duration;
 
-  IndexedSource({this.tag, this.duration});
+  IndexedSource({this.tag, this.duration, super.onDispose});
 
   @override
   void _shuffle({int? initialIndex}) {}
@@ -2339,6 +2347,7 @@ abstract class UriSource extends IndexedSource {
     this.headers,
     super.tag,
     super.duration,
+    super.onDispose,
   });
 
   /// If [uri] points to an asset, this gives us [_overrideUri] which is the URI
@@ -2438,6 +2447,7 @@ class ProgressiveSource extends UriSource {
     super.headers,
     super.tag,
     super.duration,
+    super.onDispose,
   });
 
   @override
@@ -2465,6 +2475,7 @@ class DashSource extends UriSource {
     super.headers,
     super.tag,
     super.duration,
+    super.onDispose,
   });
 
   @override
@@ -2491,6 +2502,7 @@ class HlsSource extends UriSource {
     super.headers,
     super.tag,
     super.duration,
+    super.onDispose,
   });
 
   @override
