@@ -18,7 +18,7 @@ dependencies:
       ref: video
       path: just_audio_platform_interface/
   audio_service: ^0.18.9
-  audio_session: ^0.1.14
+  audio_session: ^0.2.0
   flutter:
     sdk: flutter
   flutter_web_plugins:

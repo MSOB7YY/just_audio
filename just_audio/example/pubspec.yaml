@@ -8,7 +8,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  audio_session: ^0.1.14
+  audio_session: ^0.2.0
   rxdart: ^0.27.7
   just_audio_windows: ^0.2.0
   # Other platform implementations below:
