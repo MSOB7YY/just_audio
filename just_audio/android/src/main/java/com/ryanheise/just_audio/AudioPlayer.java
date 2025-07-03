@@ -1034,7 +1034,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
   @SuppressLint("NewApi")
   private void loudnessEnhancerSetTargetGain(double targetGain) {
-    int targetGainMillibels = (int) Math.round(targetGain * 1000.0);
+    int targetGainMillibels = (int) Math.round(targetGain * 100.0); // target gain needs to be provided in milliBel, the user provides the value in deciBel
     ((LoudnessEnhancer) audioEffectsMap.get("AndroidLoudnessEnhancer")).setTargetGain(targetGainMillibels);
   }
 
