@@ -369,6 +369,40 @@ class VideoDataMessage {
       language: map["language"] as String? ?? '',
     );
   }
+
+  @override
+  bool operator ==(covariant VideoDataMessage other) {
+    if (identical(this, other)) return true;
+
+    return other.id == id &&
+        other.textureId == textureId &&
+        other.width == width &&
+        other.height == height &&
+        other.frameRate == frameRate &&
+        other.bitrate == bitrate &&
+        other.sampleRate == sampleRate &&
+        other.encoderDelay == encoderDelay &&
+        other.rotationDegrees == rotationDegrees &&
+        other.containerMimeType == containerMimeType &&
+        other.label == label &&
+        other.language == language;
+  }
+
+  @override
+  int get hashCode {
+    return id.hashCode ^
+        textureId.hashCode ^
+        width.hashCode ^
+        height.hashCode ^
+        frameRate.hashCode ^
+        bitrate.hashCode ^
+        sampleRate.hashCode ^
+        encoderDelay.hashCode ^
+        rotationDegrees.hashCode ^
+        containerMimeType.hashCode ^
+        label.hashCode ^
+        language.hashCode;
+  }
 }
 
 /// A playback event communicated from the platform implementation to the
