@@ -51,16 +51,16 @@ class MethodChannelAudioPlayer extends AudioPlayerPlatform {
   Stream<PlayerDataMessage> get playerDataMessageStream =>
       EventChannel('com.ryanheise.just_audio.data.$id')
           .receiveBroadcastStream()
-          .map((dynamic map) =>
-              PlayerDataMessage.fromMap(map as Map<dynamic, dynamic>));
+          .cast<Map<dynamic, dynamic>>()
+          .map((map) => PlayerDataMessage.fromMap(map));
 
   /// NOTE: Android Only.
   @override
   Stream<VideoDataMessage> get videoDataMessageStream => Platform.isAndroid
       ? EventChannel('com.ryanheise.just_audio.video.$id')
           .receiveBroadcastStream()
-          .map((dynamic map) =>
-              VideoDataMessage.fromMap(map as Map<dynamic, dynamic>))
+          .cast<Map<dynamic, dynamic>>()
+          .map((map) => VideoDataMessage.fromMap(map))
       : const Stream<VideoDataMessage>.empty();
 
   @override

@@ -818,7 +818,8 @@ class AudioPlayer {
       );
     } else {
       // This will implicitly load the current audio source.
-      return await _setPlatformActive(true);
+      return await _setPlatformActive(true)
+          ?.catchError((dynamic e) async => null);
     }
   }
 
@@ -1335,6 +1336,8 @@ class AudioPlayer {
       if (!wasInterrupted()) return false;
       // An interruption that we can ignore
       if (!active) return true;
+
+      if (wasInterrupted()) return true;
       // An interruption that should throw
       final e =
           PlatformException(code: 'abort', message: 'Loading interrupted');
