@@ -213,17 +213,20 @@ class AudioPlayer {
       final curr = pair.last;
       // Detect auto-advance
       if (_seeking) return;
-      if (prev.currentIndex == null || curr.currentIndex == null) return;
-      if (curr.currentIndex != prev.currentIndex) {
+      final currentIndex = curr.currentIndex;
+      final previousIndex = prev.currentIndex;
+      if (currentIndex == null || previousIndex == null) return;
+      if (currentIndex != previousIndex) {
         // If we've changed item without seeking, it must be an autoAdvance.
         _positionDiscontinuitySubject.add(PositionDiscontinuity(
             PositionDiscontinuityReason.autoAdvance, prev, curr));
       } else {
         // If the item is the same, try to determine whether we have looped
         // back.
+        if (loopMode == LoopMode.off) return;
         final prevPos = _getPositionFor(prev);
         final currPos = _getPositionFor(curr);
-        if (loopMode != LoopMode.one) return;
+        // if (loopMode != LoopMode.one) return;
         if (currPos >= prevPos) return;
         if (currPos >= const Duration(milliseconds: 300)) return;
         final duration = this.duration;
@@ -1405,6 +1408,7 @@ class AudioPlayer {
               : IcyMetadata._fromMessage(message.icyMetadata!),
           currentIndex: index,
           androidAudioSessionId: message.androidAudioSessionId,
+          autoTransition: message.autoTransition,
         );
         _durationFuture = Future.value(playbackEvent.duration);
         if (playbackEvent == _playbackEvent) {
@@ -1664,6 +1668,8 @@ class PlaybackEvent {
   /// The current Android AudioSession ID if set.
   final int? androidAudioSessionId;
 
+  final bool? autoTransition;
+
   PlaybackEvent({
     this.processingState = ProcessingState.idle,
     DateTime? updateTime,
@@ -1673,6 +1679,7 @@ class PlaybackEvent {
     this.icyMetadata,
     this.currentIndex,
     this.androidAudioSessionId,
+    this.autoTransition,
   }) : updateTime = updateTime ?? DateTime.now();
 
   /// Returns a copy of this event with given properties replaced.
@@ -1685,6 +1692,7 @@ class PlaybackEvent {
     IcyMetadata? icyMetadata,
     int? currentIndex,
     int? androidAudioSessionId,
+    bool? autoTransition,
   }) =>
       PlaybackEvent(
         processingState: processingState ?? this.processingState,
@@ -1696,6 +1704,7 @@ class PlaybackEvent {
         currentIndex: currentIndex ?? this.currentIndex,
         androidAudioSessionId:
             androidAudioSessionId ?? this.androidAudioSessionId,
+        autoTransition: autoTransition ?? this.autoTransition,
       );
 
   @override
@@ -1708,6 +1717,7 @@ class PlaybackEvent {
         icyMetadata,
         currentIndex,
         androidAudioSessionId,
+        autoTransition,
       );
 
   @override
@@ -1721,11 +1731,12 @@ class PlaybackEvent {
       duration == other.duration &&
       icyMetadata == other.icyMetadata &&
       currentIndex == other.currentIndex &&
-      androidAudioSessionId == other.androidAudioSessionId;
+      androidAudioSessionId == other.androidAudioSessionId &&
+      autoTransition == other.autoTransition;
 
   @override
   String toString() =>
-      "{processingState=$processingState, updateTime=$updateTime, updatePosition=$updatePosition, bufferedPosition=$bufferedPosition, duration=$duration, currentIndex=$currentIndex}";
+      "{processingState=$processingState, updateTime=$updateTime, updatePosition=$updatePosition, bufferedPosition=$bufferedPosition, duration=$duration, currentIndex=$currentIndex, autoTransition=$autoTransition}";
 }
 
 /// Enumerates the different processing states of a player.

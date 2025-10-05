@@ -324,13 +324,15 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   @Override
   public void onPositionDiscontinuity(PositionInfo oldPosition, PositionInfo newPosition, int reason) {
     updatePosition();
+    updateCurrentIndex();
     switch (reason) {
       case Player.DISCONTINUITY_REASON_AUTO_TRANSITION:
+        broadcastImmediatePlaybackEvent(true);
+        break;
       case Player.DISCONTINUITY_REASON_SEEK:
-        updateCurrentIndex();
+        broadcastImmediatePlaybackEvent();
         break;
     }
-    broadcastImmediatePlaybackEvent();
   }
 
   @Override
@@ -471,17 +473,17 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       sendError(String.valueOf(error.errorCode), error.getMessage());
     }
     errorCount++;
-    if (player.hasNextMediaItem() && currentIndex != null && errorCount <= 5) {
-      int nextIndex = currentIndex + 1;
-      Timeline timeline = player.getCurrentTimeline();
-      // This condition is due to: https://github.com/ryanheise/just_audio/pull/310
-      if (nextIndex < timeline.getWindowCount()) {
-        // TODO: pass in initial position here.
-        player.setMediaSource(mediaSource);
-        player.prepare();
-        player.seekTo(nextIndex, 0);
-      }
-    }
+    // if (player.hasNextMediaItem() && currentIndex != null && errorCount <= 5) {
+    //   int nextIndex = currentIndex + 1;
+    //   Timeline timeline = player.getCurrentTimeline();
+    //   // This condition is due to: https://github.com/ryanheise/just_audio/pull/310
+    //   if (nextIndex < timeline.getWindowCount()) {
+    //     // TODO: pass in initial position here.
+    //     player.setMediaSource(mediaSource);
+    //     player.prepare();
+    //     player.seekTo(nextIndex, 0);
+    //   }
+    // }
   }
 
   private void completeSeek() {
@@ -1087,6 +1089,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
   /// Creates an event based on the current state.
   private Map<String, Object> createPlaybackEvent() {
+      return createPlaybackEvent(false);
+  }
+
+  private Map<String, Object> createPlaybackEvent(boolean autoTransition) {
     final Map<String, Object> event = new HashMap<String, Object>();
     Long duration = getDuration() == C.TIME_UNSET ? null : (1000 * getDuration());
     bufferedPosition = player != null ? player.getBufferedPosition() : 0L;
@@ -1098,6 +1104,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     event.put("duration", duration);
     event.put("currentIndex", currentIndex);
     event.put("androidAudioSessionId", audioSessionId);
+    event.put("autoTransition", autoTransition);
     return event;
   }
 
@@ -1120,13 +1127,21 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   // broadcastPendingPlaybackEvent, only the last event is
   // broadcast.
   private void enqueuePlaybackEvent() {
-    final Map<String, Object> event = new HashMap<String, Object>();
     pendingPlaybackEvent = createPlaybackEvent();
+  }
+
+  private void enqueuePlaybackEvent(boolean autoTransition) {
+    pendingPlaybackEvent = createPlaybackEvent(autoTransition);
   }
 
   // Broadcasts a new event immediately.
   private void broadcastImmediatePlaybackEvent() {
     enqueuePlaybackEvent();
+    broadcastPendingPlaybackEvent();
+  }
+  
+  private void broadcastImmediatePlaybackEvent(boolean autoTransition) {
+    enqueuePlaybackEvent(autoTransition);
     broadcastPendingPlaybackEvent();
   }
 
