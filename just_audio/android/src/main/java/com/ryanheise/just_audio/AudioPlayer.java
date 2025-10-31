@@ -217,11 +217,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   }
 
   private void setAudioSessionId(int audioSessionId) {
-    if (this.audioSessionId == audioSessionId) {
-      return;
-    }
-
     if (this.audioSessionId != null) {
+      if (this.audioSessionId == audioSessionId) {
+        return;
+      }
       // close old session id if a new one obtained
       closeSessionId(this.audioSessionId);
     }
