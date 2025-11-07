@@ -89,6 +89,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
   private ProcessingState processingState;
   private boolean handledVideoError;
+  private boolean preferSWDecoders = false;
   private long updatePosition;
   private long updateTime;
   private long bufferedPosition;
@@ -159,7 +160,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
   public AudioPlayer(final Context applicationContext, final BinaryMessenger messenger, final String id,
       Map<?, ?> audioLoadConfiguration, List<Object> rawAudioEffects,
-      TextureRegistry textureRegistry) {
+      boolean preferSWDecoders, TextureRegistry textureRegistry) {
     this.context = applicationContext;
     this.rawAudioEffects = rawAudioEffects;
     try {
@@ -174,6 +175,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     dataEventChannel = new BetterEventChannel(messenger, "com.ryanheise.just_audio.data." + id);
     videoEventChannel = new BetterEventChannel(messenger, "com.ryanheise.just_audio.video." + id);
     processingState = ProcessingState.none;
+    this.preferSWDecoders = preferSWDecoders;
     extractorsFactory.setConstantBitrateSeekingEnabled(true);
     if (audioLoadConfiguration != null) {
       Map<?, ?> loadControlMap = (Map<?, ?>) audioLoadConfiguration.get("androidLoadControl");
@@ -1004,7 +1006,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
               .build();
         }
-      }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+      }.setExtensionRendererMode(this.preferSWDecoders == true ? DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER : DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
           .setEnableDecoderFallback(true);
 
       builder.setRenderersFactory(renderersFactory);

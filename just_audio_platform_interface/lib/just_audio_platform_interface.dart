@@ -533,12 +533,14 @@ class InitRequest {
   final AudioLoadConfigurationMessage? audioLoadConfiguration;
   final List<AudioEffectMessage> androidAudioEffects;
   final List<AudioEffectMessage> darwinAudioEffects;
+  final bool? preferSWDecoders;
 
   const InitRequest({
     required this.id,
     this.audioLoadConfiguration,
     this.androidAudioEffects = const [],
     this.darwinAudioEffects = const [],
+    this.preferSWDecoders,
   });
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
@@ -550,6 +552,7 @@ class InitRequest {
         'darwinAudioEffects': darwinAudioEffects
             .map((audioEffect) => audioEffect.toMap())
             .toList(),
+        'preferSWDecoders': preferSWDecoders,
       };
 }
 

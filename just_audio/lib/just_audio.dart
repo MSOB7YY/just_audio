@@ -63,6 +63,8 @@ class AudioPlayer {
 
   final AudioLoadConfiguration? _audioLoadConfiguration;
 
+  final bool? _preferSWDecoders;
+
   /// This is `true` when the audio player needs to engage the native platform
   /// side of the plugin to decode or play audio, and is `false` when the native
   /// resources are not needed (i.e. after initial instantiation and after [stop]).
@@ -181,6 +183,7 @@ class AudioPlayer {
     bool handleInterruptions = true,
     bool androidApplyAudioAttributes = true,
     bool handleAudioSessionActivation = true,
+    bool? preferSWDecoders,
     AudioLoadConfiguration? audioLoadConfiguration,
     AudioPipeline? audioPipeline,
   })  : _id = _uuid.v4(),
@@ -188,6 +191,7 @@ class AudioPlayer {
         _androidApplyAudioAttributes =
             androidApplyAudioAttributes && _isAndroid(),
         _handleAudioSessionActivation = handleAudioSessionActivation,
+        _preferSWDecoders = preferSWDecoders,
         _audioLoadConfiguration = audioLoadConfiguration,
         _audioPipeline = audioPipeline ?? AudioPipeline() {
     _audioPipeline._setup(this);
@@ -1461,6 +1465,7 @@ class AudioPlayer {
                       .map((audioEffect) => audioEffect._toMessage())
                       .toList()
                   : [],
+              preferSWDecoders: _preferSWDecoders,
             )))
           : (_idlePlatform =
               _IdleAudioPlayer(id: _id, sequenceStream: sequenceStream));

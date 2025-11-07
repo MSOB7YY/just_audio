@@ -78,8 +78,10 @@ public class MainMethodCallHandler implements MethodCallHandler {
           //
         }
 
+        final boolean preferSWDecoders = ((Boolean) call.argument("preferSWDecoders")) == true;
+
         players.put(id, new AudioPlayer(applicationContext, messenger, id, call.argument("audioLoadConfiguration"),
-            rawAudioEffects, textureRegistry));
+            rawAudioEffects, preferSWDecoders, textureRegistry));
         result.success(null);
         break;
       }
