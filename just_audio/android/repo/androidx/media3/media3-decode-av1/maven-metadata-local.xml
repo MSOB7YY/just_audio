@@ -3,11 +3,11 @@
   <groupId>androidx.media3</groupId>
   <artifactId>media3-decode-av1</artifactId>
   <versioning>
-    <latest>1.8.0</latest>
-    <release>1.8.0</release>
+    <latest>1.8.0-o</latest>
+    <release>1.8.0-o</release>
     <versions>
-      <version>1.8.0</version>
+      <version>1.8.0-o</version>
     </versions>
-    <lastUpdated>20250730222350</lastUpdated>
+    <lastUpdated>20251109133930</lastUpdated>
   </versioning>
 </metadata>

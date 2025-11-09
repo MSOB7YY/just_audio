@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <metadata>
   <groupId>androidx.media3</groupId>
-  <artifactId>media3-decode-opus</artifactId>
+  <artifactId>media3-exoplayer-dash</artifactId>
   <versioning>
     <latest>1.8.0-o</latest>
     <release>1.8.0-o</release>
     <versions>
       <version>1.8.0-o</version>
     </versions>
-    <lastUpdated>20251109134024</lastUpdated>
+    <lastUpdated>20251109134026</lastUpdated>
   </versioning>
 </metadata>
