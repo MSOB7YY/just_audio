@@ -78,7 +78,7 @@ public class MainMethodCallHandler implements MethodCallHandler {
           //
         }
 
-        final boolean preferSWDecoders = ((Boolean) call.argument("preferSWDecoders")) == true;
+        final boolean preferSWDecoders = Boolean.TRUE.equals(call.argument("preferSWDecoders"));
 
         players.put(id, new AudioPlayer(applicationContext, messenger, id, call.argument("audioLoadConfiguration"),
             rawAudioEffects, preferSWDecoders, textureRegistry));
