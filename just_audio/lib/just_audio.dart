@@ -1437,9 +1437,15 @@ class AudioPlayer {
     }
 
     Future<AudioPlayerPlatform> setPlatform() async {
-      _playbackEventSubscription?.cancel();
-      _playerDataSubscription?.cancel();
-      _videoDataSubscription?.cancel();
+      if (_playbackEventSubscription != null) {
+        await _playbackEventSubscription!.cancel();
+      }
+      if (_playerDataSubscription != null) {
+        await _playerDataSubscription!.cancel();
+      }
+      if (_videoDataSubscription != null) {
+        await _videoDataSubscription!.cancel();
+      }
       if (!force) {
         final oldPlatform = _platformValue!;
         if (oldPlatform is! _IdleAudioPlayer) {
