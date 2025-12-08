@@ -1258,6 +1258,7 @@ class AudioPlayer {
   /// after you are done with the player.
   Future<void> dispose() async {
     if (_disposed) return;
+    await stop();
     _disposed = true;
     if (_nativePlatform != null) {
       await _disposePlatform(await _nativePlatform!);
@@ -1281,23 +1282,38 @@ class AudioPlayer {
     _proxy.stop();
 
     await [
-      _durationSubject.close(),
-      _loopModeSubject.close(),
-      _shuffleModeEnabledSubject.close(),
+      _playerDataSubscription?.cancel(),
+      _playbackEventSubscription?.cancel(),
+      _androidAudioAttributesSubscription?.cancel(),
+      _becomingNoisyEventSubscription?.cancel(),
+      _interruptionEventSubscription?.cancel(),
+      _playbackEventStreamSub?.cancel(),
+    ].executeAllSilentError();
+
+    await [
+      _playbackEventSubject.close(),
+      _sequenceStateSubject.close(),
       _playingSubject.close(),
       _volumeSubject.close(),
       _speedSubject.close(),
       _pitchSubject.close(),
+    ].executeAllSilentError();
+
+    await [
+      _durationSubject.close(),
+      _processingStateSubject.close(),
+      _bufferedPositionSubject.close(),
+      _icyMetadataSubject.close(),
+      _androidAudioSessionIdSubject.close(),
+      _playerStateSubject.close(),
+      _skipSilenceEnabledSubject.close(),
+      _positionDiscontinuitySubject.close(),
       _sequenceSubject.close(),
       _shuffleIndicesSubject.close(),
-      if (_playbackEventStreamSub != null) _playbackEventStreamSub!.cancel(),
-      if (_androidAudioAttributesSubscription != null)
-        _androidAudioAttributesSubscription!.cancel(),
-      if (_becomingNoisyEventSubscription != null)
-        _becomingNoisyEventSubscription!.cancel(),
-      if (_interruptionEventSubscription != null)
-        _interruptionEventSubscription!.cancel(),
-    ].wait;
+      _currentIndexSubject.close(),
+      _loopModeSubject.close(),
+      _shuffleModeEnabledSubject.close(),
+    ].executeAllSilentError();
   }
 
   /// Switch to using the native platform when [active] is `true` and using the
@@ -1547,6 +1563,8 @@ class AudioPlayer {
           _sendPlayRequest(platform, playCompleter);
         }
       }
+
+      if (checkInterruption()) return platform;
 
       subscribeToEvents(platform);
 
@@ -4197,4 +4215,11 @@ HttpClient _createHttpClient({String? userAgent}) {
     client.userAgent = userAgent;
   }
   return client;
+}
+
+extension _FutureIterabletUtils on Iterable<Future<void>?> {
+  Future<void> executeAllSilentError() async {
+    await Future.wait(
+        whereType<Future<void>>().map((e) => e.catchError((_) {})));
+  }
 }
