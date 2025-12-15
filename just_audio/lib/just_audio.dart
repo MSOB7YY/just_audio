@@ -1281,6 +1281,12 @@ class AudioPlayer {
     _audioVideoSources.clear();
     _proxy.stop();
 
+    try {
+      // -- try close first to avoid error
+      await _sequenceSubject.close();
+      await _sequenceStateSubject.close();
+    } catch (_) {}
+
     await [
       _playerDataSubscription?.cancel(),
       _playbackEventSubscription?.cancel(),
