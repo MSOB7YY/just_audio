@@ -1288,37 +1288,37 @@ class AudioPlayer {
     } catch (_) {}
 
     await [
-      _playerDataSubscription?.cancel(),
-      _playbackEventSubscription?.cancel(),
-      _androidAudioAttributesSubscription?.cancel(),
-      _becomingNoisyEventSubscription?.cancel(),
-      _interruptionEventSubscription?.cancel(),
-      _playbackEventStreamSub?.cancel(),
+      _playerDataSubscription?.cancel,
+      _playbackEventSubscription?.cancel,
+      _androidAudioAttributesSubscription?.cancel,
+      _becomingNoisyEventSubscription?.cancel,
+      _interruptionEventSubscription?.cancel,
+      _playbackEventStreamSub?.cancel,
     ].executeAllSilentError();
 
     await [
-      _playbackEventSubject.close(),
-      _sequenceStateSubject.close(),
-      _playingSubject.close(),
-      _volumeSubject.close(),
-      _speedSubject.close(),
-      _pitchSubject.close(),
+      _playbackEventSubject.close,
+      _sequenceStateSubject.close,
+      _playingSubject.close,
+      _volumeSubject.close,
+      _speedSubject.close,
+      _pitchSubject.close,
     ].executeAllSilentError();
 
     await [
-      _durationSubject.close(),
-      _processingStateSubject.close(),
-      _bufferedPositionSubject.close(),
-      _icyMetadataSubject.close(),
-      _androidAudioSessionIdSubject.close(),
-      _playerStateSubject.close(),
-      _skipSilenceEnabledSubject.close(),
-      _positionDiscontinuitySubject.close(),
-      _sequenceSubject.close(),
-      _shuffleIndicesSubject.close(),
-      _currentIndexSubject.close(),
-      _loopModeSubject.close(),
-      _shuffleModeEnabledSubject.close(),
+      _durationSubject.close,
+      _processingStateSubject.close,
+      _bufferedPositionSubject.close,
+      _icyMetadataSubject.close,
+      _androidAudioSessionIdSubject.close,
+      _playerStateSubject.close,
+      _skipSilenceEnabledSubject.close,
+      _positionDiscontinuitySubject.close,
+      _sequenceSubject.close,
+      _shuffleIndicesSubject.close,
+      _currentIndexSubject.close,
+      _loopModeSubject.close,
+      _shuffleModeEnabledSubject.close,
     ].executeAllSilentError();
   }
 
@@ -4223,9 +4223,9 @@ HttpClient _createHttpClient({String? userAgent}) {
   return client;
 }
 
-extension _FutureIterabletUtils on Iterable<Future<void>?> {
+extension _FutureIterabletUtils on Iterable<Future<void> Function()?> {
   Future<void> executeAllSilentError() async {
-    await Future.wait(
-        whereType<Future<void>>().map((e) => e.catchError((_) {})));
+    await Future.wait(whereType<Future<void> Function()>()
+        .map((e) => e().catchError((_) {})));
   }
 }
