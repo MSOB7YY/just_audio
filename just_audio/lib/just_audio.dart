@@ -4225,7 +4225,12 @@ HttpClient _createHttpClient({String? userAgent}) {
 
 extension _FutureIterabletUtils on Iterable<Future<void> Function()?> {
   Future<void> executeAllSilentError() async {
-    await Future.wait(whereType<Future<void> Function()>()
-        .map((e) => e().catchError((_) {})));
+    for (final fn in this) {
+      if (fn != null) {
+        try {
+          await fn();
+        } catch (_) {}
+      }
+    }
   }
 }
