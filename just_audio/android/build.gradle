@@ -59,7 +59,7 @@ android {
 }
 
 dependencies {
-    def exoplayer_version = "1.8.0-o"
+    def exoplayer_version = "1.9.0-o"
 
     // main player dependencies
     implementation "androidx.media3:media3-exoplayer:$exoplayer_version"
