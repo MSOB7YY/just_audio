@@ -1469,14 +1469,14 @@ class AudioPlayer {
         await _videoDataSubscription!.cancel();
       }
       if (!force) {
-        final oldPlatform = _platformValue!;
-        if (oldPlatform is! _IdleAudioPlayer) {
+        if (_platformValue != null && _platformValue is! _IdleAudioPlayer) {
           try {
-            await _disposePlatform(oldPlatform);
+            await _disposePlatform(_platformValue!);
           } catch (_) {}
         }
       }
-      if (_disposed) return _platform;
+      // if (_disposed) return _platform;
+
       // During initialisation, we must only use this platform reference in case
       // _platform is updated again during initialisation.
       final platform = active
