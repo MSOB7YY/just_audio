@@ -88,7 +88,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private final BetterEventChannel dataEventChannel;
 
   private ProcessingState processingState;
-  private boolean handledVideoError;
+  private boolean handledVideoError = false;
   private boolean preferSWDecoders = false;
   private long updatePosition;
   private long updateTime;
@@ -113,6 +113,9 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private Map<String, AudioEffect> audioEffectsMap = new HashMap<String, AudioEffect>();
   private int lastPlaylistLength = 0;
   private Map<String, Object> pendingPlaybackEvent;
+
+  private RendererTier rendererTier = RendererTier.HW;
+  private boolean didFallbackForItem = false;
 
   private final BetterEventChannel videoEventChannel;
   private TextureRegistry.SurfaceTextureEntry surfaceTextureEntry;
@@ -176,6 +179,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     videoEventChannel = new BetterEventChannel(messenger, "com.ryanheise.just_audio.video." + id);
     processingState = ProcessingState.none;
     this.preferSWDecoders = preferSWDecoders;
+    resetDecodersStrategy();
     extractorsFactory.setConstantBitrateSeekingEnabled(true);
     if (audioLoadConfiguration != null) {
       Map<?, ?> loadControlMap = (Map<?, ?>) audioLoadConfiguration.get("androidLoadControl");
@@ -210,6 +214,14 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                 (float) ((double) ((Double) livePlaybackSpeedControlMap.get("minPossibleLiveOffsetSmoothingFactor"))));
         livePlaybackSpeedControl = builder.build();
       }
+    }
+  }
+  private void resetDecodersStrategy() {
+    didFallbackForItem = false;
+    if (preferSWDecoders == true){
+      rendererTier = RendererTier.SW;
+    } else {
+      rendererTier = RendererTier.HW;
     }
   }
 
@@ -440,6 +452,15 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
   @Override
   public void onPlayerError(PlaybackException error) {
+    if (!didFallbackForItem){
+        int code = error.errorCode;
+        if (code == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+            code == PlaybackException.ERROR_CODE_DECODING_FAILED) {
+            fallbackRenderer();
+            return;
+        }
+    }
+      
     if (error instanceof ExoPlaybackException) {
       final ExoPlaybackException exoError = (ExoPlaybackException) error;
       if (handledVideoError == false && this.mediaSource instanceof MergingMediaSource) {
@@ -808,6 +829,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       final Integer initialIndex, final Boolean keepOldVideoSource, final Result result) {
     this.initialIndex = initialIndex;
     this.audioSource = audioSource;
+    resetDecodersStrategy();
     currentIndex = initialIndex != null ? initialIndex : 0;
     switch (processingState) {
       case none:
@@ -990,6 +1012,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       final long paddingSilenceDur = 200_000; // 200 ms
       final short silenceThresholdPCM = 512;
 
+      final int rendererMode = rendererTier == RendererTier.HW
+                    ? DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+                    : DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER;
+
       RenderersFactory renderersFactory = new DefaultRenderersFactory(context) {
         @Override
         protected AudioSink buildAudioSink(Context context, boolean enableFloatOutput,
@@ -1006,7 +1032,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
               .build();
         }
-      }.setExtensionRendererMode(this.preferSWDecoders == true ? DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER : DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+      }.setExtensionRendererMode(rendererMode)
           .setEnableDecoderFallback(true);
 
       builder.setRenderersFactory(renderersFactory);
@@ -1312,6 +1338,42 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     disposeLoopingPlayer();
     mediaSource = null;
   }
+
+  private void fallbackRenderer() {
+    RendererTier nextTier = null;
+
+    switch (rendererTier) {
+        case HW:
+            nextTier = RendererTier.SW;
+            break;
+        case SW:
+            nextTier = RendererTier.HW;
+            break;
+        default:
+            break;
+    }
+ 
+    if (nextTier == null || nextTier == rendererTier) {
+      return;
+    }
+
+    MediaItem mediaItem = player.getCurrentMediaItem();
+    long position = player.getCurrentPosition();
+
+    didFallbackForItem = true;
+    rendererTier = nextTier;
+
+    player.release();
+    player = null;
+
+    ensurePlayerInitialized();
+
+    player.setMediaItem(mediaItem);
+    player.seekTo(position);
+    player.prepare();
+    player.play();
+  }
+
 
   public void dispose() {
     freeTemporarily();
