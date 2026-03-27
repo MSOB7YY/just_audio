@@ -172,6 +172,7 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
   final videoDataController = StreamController<VideoDataMessage>.broadcast();
   bool? _playing;
   IcyMetadataMessage? _icyMetadata;
+  List<AudioTrack>? _audioTracks;
   int? _androidAudioSessionId;
   late final _PlayerAudioHandler _playerAudioHandler;
 
@@ -222,6 +223,7 @@ class _JustAudioPlayer extends AudioPlayerPlatform {
       updateTime: playbackState.updateTime,
       bufferedPosition: playbackState.bufferedPosition,
       icyMetadata: _icyMetadata,
+      audioTracks: _audioTracks,
       duration: _playerAudioHandler.currentMediaItem?.duration,
       currentIndex: playbackState.queueIndex,
       androidAudioSessionId: _androidAudioSessionId,
@@ -334,6 +336,7 @@ class _PlayerAudioHandler extends BaseAudioHandler
     bufferedPosition: Duration.zero,
     duration: null,
     icyMetadata: null,
+    audioTracks: null,
     currentIndex: null,
     androidAudioSessionId: null,
   );
@@ -437,6 +440,7 @@ class _PlayerAudioHandler extends BaseAudioHandler
       audioSourceMessage: _source!,
       initialPosition: request.initialPosition,
       initialIndex: request.initialIndex,
+      audioTrackId: request.audioTrackId,
       videoRequest: request.videoRequest,
       keepOldVideoSource: request.keepOldVideoSource,
     ));
@@ -763,8 +767,10 @@ extension _PlaybackEventMessageExtension on PlaybackEventMessage {
     Duration? bufferedPosition,
     Duration? duration,
     IcyMetadataMessage? icyMetadata,
+    List<AudioTrack>? audioTracks,
     int? currentIndex,
     int? androidAudioSessionId,
+    bool? autoTransition,
   }) =>
       PlaybackEventMessage(
         processingState: processingState ?? this.processingState,
@@ -773,6 +779,8 @@ extension _PlaybackEventMessageExtension on PlaybackEventMessage {
         bufferedPosition: bufferedPosition ?? this.bufferedPosition,
         duration: duration ?? this.duration,
         icyMetadata: icyMetadata ?? this.icyMetadata,
+        audioTracks: audioTracks ?? this.audioTracks,
+        autoTransition: autoTransition ?? this.autoTransition,
         currentIndex: currentIndex ?? this.currentIndex,
         androidAudioSessionId:
             androidAudioSessionId ?? this.androidAudioSessionId,

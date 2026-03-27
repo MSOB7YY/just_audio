@@ -94,6 +94,10 @@ abstract class AudioPlayerPlatform {
     throw UnimplementedError("setVideo() has not been implemented.");
   }
 
+  Future<void> setAudioTrack(String? trackId) async {
+    throw UnimplementedError("setAudioTrack() has not been implemented.");
+  }
+
   /// Retrieves the currently active preset.
   Future<int?> getCurrentPreset() async {
     throw UnimplementedError("getCurrentPreset() has not been implemented.");
@@ -414,6 +418,7 @@ class PlaybackEventMessage {
   final Duration bufferedPosition;
   final Duration? duration;
   final IcyMetadataMessage? icyMetadata;
+  final List<AudioTrack>? audioTracks;
   final int? currentIndex;
   final int? androidAudioSessionId;
   final bool? autoTransition;
@@ -425,6 +430,7 @@ class PlaybackEventMessage {
     required this.bufferedPosition,
     required this.duration,
     required this.icyMetadata,
+    required this.audioTracks,
     required this.currentIndex,
     this.androidAudioSessionId,
     this.autoTransition,
@@ -446,6 +452,9 @@ class PlaybackEventMessage {
             ? null
             : IcyMetadataMessage.fromMap(
                 map['icyMetadata'] as Map<dynamic, dynamic>),
+        audioTracks: map['audioTracks'] == null
+            ? null
+            : (map['audioTracks'] as List).map(AudioTrack.fromMap).toList(),
         currentIndex: map['currentIndex'] as int?,
         androidAudioSessionId: map['androidAudioSessionId'] as int?,
         autoTransition: map['autoTransition'] as bool?,
@@ -481,6 +490,50 @@ class IcyMetadataMessage {
             : IcyHeadersMessage.fromMap(
                 json['headers'] as Map<dynamic, dynamic>),
       );
+}
+
+class AudioTrack {
+  final int groupIndex;
+  final int trackIndex;
+  final bool isSelected;
+  final String? id;
+  final String? label;
+  final String? language;
+  final int? channelCount;
+  final int? sampleRate;
+  final int? bitrate;
+  final String? mimeType;
+
+  const AudioTrack({
+    required this.groupIndex,
+    required this.trackIndex,
+    required this.isSelected,
+    this.id,
+    this.label,
+    this.language,
+    this.channelCount,
+    this.sampleRate,
+    this.bitrate,
+    this.mimeType,
+  });
+
+  factory AudioTrack.fromMap(dynamic map) {
+    map as Map;
+    return AudioTrack(
+      groupIndex: map['groupIndex'] as int,
+      trackIndex: map['trackIndex'] as int,
+      isSelected: map['isSelected'] as bool,
+      id: map['id'] as String?,
+      label: map['label'] as String?,
+      language: map['language'] as String?,
+      channelCount: map['channelCount'] as int?,
+      sampleRate: map['sampleRate'] as int?,
+      bitrate: map['bitrate'] as int?,
+      mimeType: map['mimeType'] as String?,
+    );
+  }
+
+  String get displayName => language ?? label ?? id ?? 'Track $trackIndex';
 }
 
 /// Icy info communicated from the platform implementation.
@@ -597,6 +650,7 @@ class LoadRequest {
   final VideoLoadRequest? videoRequest;
   final Duration? initialPosition;
   final int? initialIndex;
+  final String? audioTrackId;
   final bool keepOldVideoSource;
 
   const LoadRequest({
@@ -604,6 +658,7 @@ class LoadRequest {
     required this.videoRequest,
     required this.initialPosition,
     required this.initialIndex,
+    required this.audioTrackId,
     required this.keepOldVideoSource,
   });
 
@@ -612,6 +667,7 @@ class LoadRequest {
         'videoOptions': videoRequest?.toMap(),
         'initialPosition': initialPosition?.inMicroseconds,
         'initialIndex': initialIndex,
+        'audioTrackId': audioTrackId,
         'keepOldVideoSource': keepOldVideoSource,
       };
 }

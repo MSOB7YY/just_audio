@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+
 import 'package:flutter_web_plugins/flutter_web_plugins.dart';
 import 'package:just_audio_platform_interface/just_audio_platform_interface.dart';
 
@@ -84,6 +85,7 @@ abstract class JustAudioPlayer extends AudioPlayerPlatform {
       bufferedPosition: getBufferedPosition(),
       // TODO: Icy Metadata
       icyMetadata: null,
+      audioTracks: null,
       duration: getDuration(),
       currentIndex: _index,
       androidAudioSessionId: null,

@@ -75,6 +75,11 @@ class MethodChannelAudioPlayer extends AudioPlayerPlatform {
   }
 
   @override
+  Future<void> setAudioTrack(String? trackId) async {
+    await _channel.invokeMethod('setAudioTrack', {'trackId': trackId});
+  }
+
+  @override
   Future<int?> getCurrentPreset() async {
     return await _channel.invokeMethod<int?>('getCurrentPreset');
   }

@@ -3,8 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:audio_session/audio_session.dart';
 import 'package:flutter/services.dart';
+
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_platform_interface/just_audio_platform_interface.dart';
@@ -1438,6 +1439,7 @@ class MockAudioPlayer extends AudioPlayerPlatform {
   final AudioLoadConfigurationMessage? audioLoadConfiguration;
   SourceMessage? _audioSource;
   ProcessingStateMessage _processingState = ProcessingStateMessage.idle;
+  List<AudioTrack>? _audioTracks;
   Duration _updatePosition = Duration.zero;
   DateTime _updateTime = DateTime.now();
   // ignore: prefer_final_fields
@@ -1465,6 +1467,7 @@ class MockAudioPlayer extends AudioPlayerPlatform {
   Future<LoadResponse> load(LoadRequest request) async {
     final audioSource = request.audioSourceMessage;
     _processingState = ProcessingStateMessage.loading;
+    _audioTracks = null;
     _broadcastPlaybackEvent();
     if (audioSource is UriSourceMessage) {
       if (audioSource.uri.contains('abort')) {
@@ -1651,6 +1654,7 @@ class MockAudioPlayer extends AudioPlayerPlatform {
           url: url,
         ),
       ),
+      audioTracks: _audioTracks,
       duration: _duration,
       currentIndex: _index,
       androidAudioSessionId: null,

@@ -25,6 +25,7 @@ import androidx.media3.common.Metadata;
 import androidx.media3.common.Timeline;
 import androidx.media3.common.TrackGroup;
 import androidx.media3.common.Tracks;
+import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.audio.AudioProcessor;
 import androidx.media3.common.audio.SonicAudioProcessor;
 import androidx.media3.common.util.UnstableApi;
@@ -71,6 +72,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Map;
 import java.util.Random;
 
@@ -104,6 +107,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   public static Map<String, MediaSource> videoSources = new HashMap<String, MediaSource>();
   private IcyInfo icyInfo;
   private IcyHeaders icyHeaders;
+  private List<Map<String, Object>> audioTracks;
   private int errorCount;
   private AudioAttributes pendingAudioAttributes;
   private LoadControl loadControl;
@@ -116,6 +120,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
   private RendererTier rendererTier = RendererTier.HW;
   private boolean didFallbackForItem = false;
+
+  private String pendingAudioTrackId = null;
 
   private final BetterEventChannel videoEventChannel;
   private TextureRegistry.SurfaceTextureEntry surfaceTextureEntry;
@@ -306,6 +312,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
   @Override
   public void onTracksChanged(Tracks tracks) {
+    sendAudioTracks(tracks);
+
     for (int i = 0; i < tracks.getGroups().size(); i++) {
       TrackGroup trackGroup = tracks.getGroups().get(i).getMediaTrackGroup();
 
@@ -323,6 +331,84 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         }
       }
     }
+  }
+  
+  private void sendAudioTracks(Tracks tracks) {
+    List<Map<String, Object>> audioTrackList = new ArrayList<>();
+    Set<String> seen = new HashSet<>();
+
+    for (int i = 0; i < tracks.getGroups().size(); i++) {
+      Tracks.Group group = tracks.getGroups().get(i);
+      if (group.getType() != C.TRACK_TYPE_AUDIO) continue;
+
+      for (int j = 0; j < group.length; j++) {
+        Format format = group.getTrackFormat(j);
+        String key = format.language + "|" + format.channelCount + "|" + format.bitrate + "|" + format.sampleRate;
+        if (!seen.add(key)) continue;
+        Map<String, Object> trackMap = new HashMap<>();
+        trackMap.put("groupIndex", i);
+        trackMap.put("trackIndex", j);
+        trackMap.put("isSelected", group.isTrackSelected(j));
+        trackMap.put("id", format.id);
+        trackMap.put("label", format.label);
+        trackMap.put("language", format.language);
+        trackMap.put("channelCount", format.channelCount);
+        trackMap.put("sampleRate", format.sampleRate);
+        trackMap.put("bitrate", format.bitrate);
+        trackMap.put("mimeType", format.sampleMimeType);
+        audioTrackList.add(trackMap);
+      }
+    }
+    this.audioTracks = audioTrackList;
+    broadcastImmediatePlaybackEvent();
+  }
+
+  public void setAudioTrack(String trackId) {
+    if (trackId == null) {
+      pendingAudioTrackId = null;
+      clearAudioTrackOverride();
+      return;
+    }
+
+    if (player.getCurrentTracks() == Tracks.EMPTY) {
+      pendingAudioTrackId = trackId;
+      return;
+    }
+
+    Tracks tracks = player.getCurrentTracks();
+    for (int i = 0; i < tracks.getGroups().size(); i++) {
+      Tracks.Group group = tracks.getGroups().get(i);
+      if (group.getType() != C.TRACK_TYPE_AUDIO) continue;
+
+      for (int j = 0; j < group.length; j++) {
+        Format format = group.getTrackFormat(j);
+        if (!trackId.equals(format.id)) continue;
+
+        player.setTrackSelectionParameters(
+          player.getTrackSelectionParameters()
+            .buildUpon()
+            .setOverrideForType(new TrackSelectionOverride(
+              group.getMediaTrackGroup(),
+              j
+            ))
+            .build()
+        );
+        return;
+      }
+    }
+  }
+
+  public void clearAudioTrackOverride() {
+    player.setTrackSelectionParameters(
+      player.getTrackSelectionParameters()
+        .buildUpon()
+        .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+        .build()
+    );
+  }
+
+  public void setPendingAudioTrack(String trackId) {
+    pendingAudioTrackId = trackId;
   }
 
   private boolean updatePositionIfChanged() {
@@ -402,6 +488,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         processingState = ProcessingState.ready;
         broadcastImmediatePlaybackEvent();
         sendVideoInfo();
+        sendAudioTracks(player.getCurrentTracks());
         ppLoopingPlayer(player.getPlayWhenReady());
         if (prepareResult != null) {
           Map<String, Object> response = new HashMap<>();
@@ -415,6 +502,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         }
         if (seekResult != null) {
           completeSeek();
+        }
+        if (pendingAudioTrackId != null) {
+          setAudioTrack(pendingAudioTrackId);
+          pendingAudioTrackId = null;
         }
         break;
       case Player.STATE_BUFFERING:
@@ -527,16 +618,22 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         case "load":
           final Long initialPosition = getLong(call.argument("initialPosition"));
           final Integer initialIndex = call.argument("initialIndex");
+          final String audioTrackId = call.argument("audioTrackId");
           final Boolean keepOldVideoSource = call.argument("keepOldVideoSource");
           final Map<?, ?> videoOptionsMap = call.argument("videoOptions");
           final VideoOptions videoOptions = videoOptionsMap == null ? null
               : VideoOptions.fromMap(videoOptionsMap, getVideoSource(videoOptionsMap.get("videoSource")));
           final long initialPositionFinal = initialPosition == null ? C.TIME_UNSET : initialPosition / 1000;
           final MediaSource audioSource = getAudioSource(call.argument("audioSource"));
-          load(audioSource, videoOptions, initialPositionFinal, initialIndex, keepOldVideoSource, result);
+          load(audioSource, videoOptions, initialPositionFinal, initialIndex, audioTrackId, keepOldVideoSource, result);
           break;
         case "setVideo":
           setVideoOptions(call.argument("video"));
+          result.success(new HashMap<String, Object>());
+          break;
+        case "setAudioTrack":
+          String trackId = call.argument("trackId");
+          setAudioTrack(trackId);
           result.success(new HashMap<String, Object>());
           break;
         case "play":
@@ -826,7 +923,9 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   }
 
   private void load(final MediaSource audioSource, final VideoOptions videoOptions, final long initialPosition,
-      final Integer initialIndex, final Boolean keepOldVideoSource, final Result result) {
+      final Integer initialIndex, final String audioTrackId, final Boolean keepOldVideoSource, final Result result) {
+    this.pendingAudioTrackId = audioTrackId;
+    this.audioTracks = null;
     this.initialIndex = initialIndex;
     this.audioSource = audioSource;
     resetDecodersStrategy();
@@ -1132,6 +1231,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     event.put("updateTime", updateTime);
     event.put("bufferedPosition", 1000 * Math.max(updatePosition, bufferedPosition));
     event.put("icyMetadata", collectIcyMetadata());
+    event.put("audioTracks", audioTracks);
     event.put("duration", duration);
     event.put("currentIndex", currentIndex);
     event.put("androidAudioSessionId", audioSessionId);

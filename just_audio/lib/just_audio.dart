@@ -15,6 +15,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
 
+export 'package:just_audio_platform_interface/just_audio_platform_interface.dart'
+    show AudioTrack;
+
 typedef VideoInfoData = VideoDataMessage;
 
 const _uuid = Uuid();
@@ -103,6 +106,7 @@ class AudioPlayer {
   final _proxy = _ProxyHttpServer();
   AudioVideoSource? _audioSource;
   VideoSourceOptions? _videoOptions;
+  String? _audioTrackId;
   bool _keepOldVideoSource = false;
   final Map<String, AudioVideoSource> _audioVideoSources = {};
   bool _disposed = false;
@@ -121,6 +125,7 @@ class AudioPlayer {
   final _skipSilenceEnabledSubject = BehaviorSubject.seeded(false);
   final _bufferedPositionSubject = BehaviorSubject<Duration>();
   final _icyMetadataSubject = BehaviorSubject<IcyMetadata?>();
+  final _audioTracksSubject = BehaviorSubject<List<AudioTrack>?>();
   final _playerStateSubject = BehaviorSubject<PlayerState>();
   final _sequenceSubject = BehaviorSubject<List<IndexedSource>?>();
   final _shuffleIndicesSubject = BehaviorSubject<List<int>?>();
@@ -210,6 +215,10 @@ class AudioPlayer {
         .handleError((Object err, StackTrace stackTrace) {/* noop */}));
     _icyMetadataSubject.addStream(playbackEventStream
         .map((event) => event.icyMetadata)
+        .distinct()
+        .handleError((Object err, StackTrace stackTrace) {/* noop */}));
+    _audioTracksSubject.addStream(playbackEventStream
+        .map((event) => event.audioTracks)
         .distinct()
         .handleError((Object err, StackTrace stackTrace) {/* noop */}));
     _playbackEventStreamSub = playbackEventStream.pairwise().listen((pair) {
@@ -449,6 +458,10 @@ class AudioPlayer {
 
   /// A stream of ICY metadata received through the audio source.
   Stream<IcyMetadata?> get icyMetadataStream => _icyMetadataSubject.stream;
+
+  List<AudioTrack>? get audioTracks => _playbackEvent.audioTracks;
+
+  Stream<List<AudioTrack>?> get audioTracksStream => _audioTracksSubject.stream;
 
   /// The current player state containing only the processing and playing
   /// states.
@@ -768,6 +781,7 @@ class AudioPlayer {
     AudioVideoSource source, {
     bool preload = true,
     int? initialIndex,
+    String? audioTrackId,
     Duration? initialPosition,
     VideoSourceOptions? videoOptions,
     bool keepOldVideoSource = false,
@@ -782,10 +796,13 @@ class AudioPlayer {
     _initialSeekValues =
         _InitialSeekValues(position: initialPosition, index: initialIndex);
     _playbackEventSubject.add(_playbackEvent = PlaybackEvent(
-        currentIndex: initialIndex ?? 0,
-        updatePosition: initialPosition ?? Duration.zero));
+      currentIndex: initialIndex ?? 0,
+      updatePosition: initialPosition ?? Duration.zero,
+      audioTracks: null,
+    ));
     _audioSource = source;
     if (keepOldVideoSource == false) _videoOptions = videoOptions;
+    _audioTrackId = audioTrackId;
     _keepOldVideoSource = keepOldVideoSource;
     _broadcastSequence();
     Duration? duration;
@@ -821,6 +838,7 @@ class AudioPlayer {
         _audioSource!,
         _videoOptions,
         initialSeekValues: initialSeekValues,
+        audioTrackId: _audioTrackId,
         keepOldVideoSource: _keepOldVideoSource,
       );
     } else {
@@ -847,6 +865,10 @@ class AudioPlayer {
               videoOnly: video.videoOnly,
             ),
     );
+  }
+
+  Future<void> setAudioTrack(String? trackId) async {
+    return await (await _platform).setAudioTrack(trackId);
   }
 
   void _broadcastSequence() {
@@ -880,6 +902,7 @@ class AudioPlayer {
     AudioVideoSource audioSource,
     VideoSourceOptions? videoSource, {
     _InitialSeekValues? initialSeekValues,
+    String? audioTrackId,
     required bool keepOldVideoSource,
   }) async {
     final activationNumber = _activationCount;
@@ -908,6 +931,7 @@ class AudioPlayer {
               ),
         initialPosition: initialSeekValues?.position,
         initialIndex: initialSeekValues?.index,
+        audioTrackId: audioTrackId,
         keepOldVideoSource: keepOldVideoSource,
       ));
       final duration = response.duration;
@@ -1310,6 +1334,7 @@ class AudioPlayer {
       _processingStateSubject.close,
       _bufferedPositionSubject.close,
       _icyMetadataSubject.close,
+      _audioTracksSubject.close,
       _androidAudioSessionIdSubject.close,
       _playerStateSubject.close,
       _skipSilenceEnabledSubject.close,
@@ -1432,6 +1457,7 @@ class AudioPlayer {
           icyMetadata: message.icyMetadata == null
               ? null
               : IcyMetadata._fromMessage(message.icyMetadata!),
+          audioTracks: message.audioTracks,
           currentIndex: index,
           androidAudioSessionId: message.androidAudioSessionId,
           autoTransition: message.autoTransition,
@@ -1697,6 +1723,8 @@ class PlaybackEvent {
   /// The latest ICY metadata received through the audio stream if available.
   final IcyMetadata? icyMetadata;
 
+  final List<AudioTrack>? audioTracks;
+
   /// The index of the currently playing item, or `null` if no item is selected.
   final int? currentIndex;
 
@@ -1712,6 +1740,7 @@ class PlaybackEvent {
     this.bufferedPosition = Duration.zero,
     this.duration,
     this.icyMetadata,
+    this.audioTracks,
     this.currentIndex,
     this.androidAudioSessionId,
     this.autoTransition,
@@ -1725,6 +1754,7 @@ class PlaybackEvent {
     Duration? bufferedPosition,
     Duration? duration,
     IcyMetadata? icyMetadata,
+    List<AudioTrack>? audioTracks,
     int? currentIndex,
     int? androidAudioSessionId,
     bool? autoTransition,
@@ -1736,6 +1766,7 @@ class PlaybackEvent {
         bufferedPosition: bufferedPosition ?? this.bufferedPosition,
         duration: duration ?? this.duration,
         icyMetadata: icyMetadata ?? this.icyMetadata,
+        audioTracks: audioTracks ?? this.audioTracks,
         currentIndex: currentIndex ?? this.currentIndex,
         androidAudioSessionId:
             androidAudioSessionId ?? this.androidAudioSessionId,
@@ -1750,6 +1781,7 @@ class PlaybackEvent {
         bufferedPosition,
         duration,
         icyMetadata,
+        audioTracks,
         currentIndex,
         androidAudioSessionId,
         autoTransition,
@@ -1765,6 +1797,7 @@ class PlaybackEvent {
       bufferedPosition == other.bufferedPosition &&
       duration == other.duration &&
       icyMetadata == other.icyMetadata &&
+      audioTracks == other.audioTracks &&
       currentIndex == other.currentIndex &&
       androidAudioSessionId == other.androidAudioSessionId &&
       autoTransition == other.autoTransition;
@@ -3695,6 +3728,7 @@ class _IdleAudioPlayer extends AudioPlayerPlatform {
       updateTime: updateTime,
       bufferedPosition: Duration.zero,
       icyMetadata: null,
+      audioTracks: null,
       duration: _getDurationAtIndex(_index),
       currentIndex: _index,
       androidAudioSessionId: null,
@@ -3720,6 +3754,9 @@ class _IdleAudioPlayer extends AudioPlayerPlatform {
 
   @override
   Future<void> setVideo(VideoLoadRequest? video) async {}
+
+  @override
+  Future<void> setAudioTrack(String? trackId) async {}
 
   @override
   Future<PlayResponse> play(PlayRequest request) async {
