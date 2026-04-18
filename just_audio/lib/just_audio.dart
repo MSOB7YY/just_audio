@@ -3461,21 +3461,18 @@ _ProxyHandler _proxyHandlerForSource(StreamSource source) {
       request.response.statusCode = 200;
     }
 
-    final completer = Completer<void>();
-    final subscription = stream.listen((event) {
+    request.response.bufferOutput = false;
+
+    var done = false;
+    request.response.done.then((_) => done = true);
+
+    await for (final event in stream) {
+      if (done) break;
       request.response.add(event);
-    }, onError: (Object e, StackTrace st) {
-      source._player?._playbackEventSubject.addError(e, st);
-    }, onDone: () {
-      completer.complete();
-    });
+      await request.response.flush();
+    }
 
-    request.response.done.then((dynamic value) {
-      subscription.cancel();
-    });
-
-    await completer.future;
-
+    await request.response.flush();
     await request.response.close();
   }
 
