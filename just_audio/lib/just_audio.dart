@@ -4110,6 +4110,16 @@ class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
   AudioPlayerPlatform? _platform;
   final _platformCompleter = Completer<void>();
 
+  Future<void> _fillPreset() async {
+    if (!_presetsCompleter.isCompleted) {
+      _platform?.getEqualizerPresets().then((v) {
+        if (!_presetsCompleter.isCompleted) _presetsCompleter.complete(v);
+      }).catchError((_) {
+        if (!_presetsCompleter.isCompleted) _presetsCompleter.complete([]);
+      });
+    }
+  }
+
   @override
   Future<void> _activate(AudioPlayerPlatform platform) async {
     _platform = platform;
@@ -4119,6 +4129,7 @@ class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
       if (parametersStream.hasValue) {
         await (await parameters)._restore(platform);
         if (_presetIndex != null) await setPreset(_presetIndex!);
+        _fillPreset();
         return;
       }
     } catch (e) {
@@ -4130,12 +4141,7 @@ class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
     await _fillParameters(platform, _player!);
     if (_presetIndex != null) await setPreset(_presetIndex!);
 
-    if (!_presetsCompleter.isCompleted) {
-      platform
-          .getEqualizerPresets()
-          .then((value) => _presetsCompleter.complete(value))
-          .catchError((_) {});
-    }
+    _fillPreset();
   }
 
   Future<void> _fillParameters(
