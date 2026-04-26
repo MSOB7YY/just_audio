@@ -3881,6 +3881,12 @@ class _IdleAudioPlayer extends AudioPlayerPlatform {
           AndroidLoudnessEnhancerSetTargetGainRequest request) async {
     return AndroidLoudnessEnhancerSetTargetGainResponse();
   }
+
+  @override
+  Future<AndroidBassBoostSetStrengthResponse> androidBassBoostSetStrength(
+      AndroidBassBoostSetStrengthRequest request) async {
+    return AndroidBassBoostSetStrengthResponse();
+  }
 }
 
 /// Holds the initial requested position and index for a newly loaded audio
@@ -3999,6 +4005,32 @@ class AndroidLoudnessEnhancer extends AudioEffect with AndroidAudioEffect {
       );
 }
 
+class AndroidBassBoost extends AudioEffect with AndroidAudioEffect {
+  final _strengthSubject = BehaviorSubject.seeded(0.0);
+
+  @override
+  String get _type => 'AndroidBassBoost';
+
+  double get strength => _strengthSubject.nvalue!;
+
+  Stream<double> get strengthStream => _strengthSubject.stream;
+
+  /// Sets the target gain to a value in decibels.
+  Future<void> setStrength(double strength) async {
+    _strengthSubject.add(strength);
+    if (_active) {
+      await (await _player!._platform).androidBassBoostSetStrength(
+          AndroidBassBoostSetStrengthRequest(strength: strength));
+    }
+  }
+
+  @override
+  AudioEffectMessage _toMessage() => AndroidBassBoostMessage(
+        enabled: enabled,
+        strength: strength,
+      );
+}
+
 /// A frequency band within an [AndroidEqualizer].
 class AndroidEqualizerBand {
   final AudioPlayer _player;
@@ -4108,7 +4140,6 @@ class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
   String get _type => 'AndroidEqualizer';
 
   AudioPlayerPlatform? _platform;
-  final _platformCompleter = Completer<void>();
 
   Future<void> _fillPreset() async {
     if (!_presetsCompleter.isCompleted) {
@@ -4123,11 +4154,11 @@ class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
   @override
   Future<void> _activate(AudioPlayerPlatform platform) async {
     _platform = platform;
-    if (!_platformCompleter.isCompleted) _platformCompleter.complete();
     try {
       await super._activate(platform);
       if (parametersStream.hasValue) {
-        await (await parameters)._restore(platform);
+        await (await parameters)?._restore(platform);
+        await _fillParameters(platform, _player!);
         if (_presetIndex != null) await setPreset(_presetIndex!);
         _fillPreset();
         return;
@@ -4140,7 +4171,6 @@ class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
 
     await _fillParameters(platform, _player!);
     if (_presetIndex != null) await setPreset(_presetIndex!);
-
     _fillPreset();
   }
 
@@ -4160,9 +4190,18 @@ class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
   }
 
   /// The parameter values of this equalizer.
-  Future<AndroidEqualizerParameters> get parameters async {
-    await parametersStream.first;
-    return parametersStream.value;
+  Future<AndroidEqualizerParameters?> get parameters async {
+    try {
+      await parametersStream.first.timeout(const Duration(seconds: 3));
+    } catch (_) {
+      if (_platform != null && _player != null) {
+        await _fillParameters(_platform!, _player!);
+      }
+    }
+    if (parametersStream.hasValue) {
+      return parametersStream.value;
+    }
+    return null;
   }
 
   Future<List<String>> get presets => _presetsCompleter.future;
@@ -4172,7 +4211,6 @@ class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
     if (index == null) return null;
     int? newPreset;
     try {
-      await _platformCompleter.future;
       newPreset = await _platform?.setEqualizerPreset(index);
     } catch (e) {
       if (kDebugMode) {
@@ -4189,7 +4227,6 @@ class AndroidEqualizer extends AudioEffect with AndroidAudioEffect {
   }
 
   Future<int?> getCurrentPreset() async {
-    await _platformCompleter.future;
     return _platform?.getCurrentPreset();
   }
 

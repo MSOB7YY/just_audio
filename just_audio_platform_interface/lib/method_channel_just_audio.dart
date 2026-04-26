@@ -245,6 +245,14 @@ class MethodChannelAudioPlayer extends AudioPlayerPlatform {
   }
 
   @override
+  Future<AndroidBassBoostSetStrengthResponse> androidBassBoostSetStrength(
+      AndroidBassBoostSetStrengthRequest request) async {
+    return AndroidBassBoostSetStrengthResponse.fromMap(
+        (await _channel.invokeMethod<Map<dynamic, dynamic>>(
+            'androidBassBoostSetStrength', request.toMap()))!);
+  }
+
+  @override
   Future<AndroidEqualizerGetParametersResponse> androidEqualizerGetParameters(
       AndroidEqualizerGetParametersRequest request) async {
     return AndroidEqualizerGetParametersResponse.fromMap(

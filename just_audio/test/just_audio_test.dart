@@ -1349,17 +1349,17 @@ void runTests() {
     expect(equalizer.enabled, equals(true));
     expect(await equalizer.enabledStream.first, equals(true));
     final parameters = await equalizer.parameters;
-    expect(parameters.minDecibels, equals(0.0));
-    expect(parameters.maxDecibels, equals(10.0));
-    final bands = parameters.bands;
-    expect(bands.length, equals(5));
+    expect(parameters?.minDecibels, equals(0.0));
+    expect(parameters?.maxDecibels, equals(10.0));
+    final bands = parameters?.bands;
+    expect(bands?.length, equals(5));
     for (var i = 0; i < 5; i++) {
-      final band = bands[i];
-      expect(band.index, equals(i));
-      expect(band.lowerFrequency, equals(i * 1000));
-      expect(band.upperFrequency, equals((i + 1) * 1000));
-      expect(band.centerFrequency, equals((i + 0.5) * 1000));
-      expect(band.gain, equals(i * 0.1));
+      final band = bands?[i];
+      expect(band?.index, equals(i));
+      expect(band?.lowerFrequency, equals(i * 1000));
+      expect(band?.upperFrequency, equals((i + 1) * 1000));
+      expect(band?.centerFrequency, equals((i + 0.5) * 1000));
+      expect(band?.gain, equals(i * 0.1));
     }
   });
 }
@@ -1703,6 +1703,12 @@ class MockAudioPlayer extends AudioPlayerPlatform {
       androidLoudnessEnhancerSetTargetGain(
           AndroidLoudnessEnhancerSetTargetGainRequest request) async {
     return AndroidLoudnessEnhancerSetTargetGainResponse();
+  }
+
+  @override
+  Future<AndroidBassBoostSetStrengthResponse> androidBassBoostSetStrength(
+      AndroidBassBoostSetStrengthRequest request) async {
+    return AndroidBassBoostSetStrengthResponse();
   }
 
   @override

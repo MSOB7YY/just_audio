@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
 import android.media.audiofx.AudioEffect;
+import android.media.audiofx.BassBoost;
 import android.media.audiofx.Equalizer;
 import android.media.audiofx.LoudnessEnhancer;
 import android.net.Uri;
@@ -719,6 +720,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
           equalizerBandSetGain(call.argument("bandIndex"), call.argument("gain"));
           result.success(new HashMap<String, Object>());
           break;
+        case "androidBassBoostSetStrength":
+          bassBoostSetStrength((Double) call.argument("strength"));
+          result.success(new HashMap<String, Object>());
+          break;
         case "getCurrentPreset":
           result.success(getCurrentPreset());
           break;
@@ -894,13 +899,23 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         case "AndroidEqualizer":
           Equalizer equalizer = new Equalizer(0, audioSessionId);
           return equalizer;
+        case "AndroidBassBoost":
+          BassBoost bassBoost = new BassBoost(0, audioSessionId);
+          short strength = (short) Math.round(((Double) map.get("strength")) * 1000.0);
+          bassBoost.setStrength(strength);
+          return bassBoost;
         default:
           throw new IllegalArgumentException("Unknown AudioEffect type: " + map.get("type"));
       }
     } catch (Exception ignore) {
       return null;
     }
+  }
 
+  private void bassBoostSetStrength(double strength) {
+    short strengthMillis = (short) Math.round(strength * 1000.0);
+    ((BassBoost) audioEffectsMap.get("AndroidBassBoost")).setStrength(strengthMillis);
+    updateRawAudioEffect("AndroidBassBoost", "strength", strength);
   }
 
   private void clearAudioEffects() {
@@ -1160,14 +1175,28 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     }
   }
 
+  @SuppressWarnings("unchecked")
+  private void updateRawAudioEffect(String type, String key, Object value) {
+    for (Object raw : rawAudioEffects) {
+      Map<String, Object> map = (Map<String, Object>) raw;
+      if (type.equals(map.get("type"))) {
+        map.put(key, value);
+        break;
+      }
+    }
+  }
+
+
   private void audioEffectSetEnabled(String type, boolean enabled) {
     audioEffectsMap.get(type).setEnabled(enabled);
+    updateRawAudioEffect(type, "enabled", enabled);
   }
 
   @SuppressLint("NewApi")
   private void loudnessEnhancerSetTargetGain(double targetGain) {
-    int targetGainMillibels = (int) Math.round(targetGain * 100.0); // target gain needs to be provided in milliBel, the user provides the value in deciBel
+    int targetGainMillibels = (int) Math.round(targetGain * 100.0);
     ((LoudnessEnhancer) audioEffectsMap.get("AndroidLoudnessEnhancer")).setTargetGain(targetGainMillibels);
+    updateRawAudioEffect("AndroidLoudnessEnhancer", "targetGain", targetGain);
   }
 
   private Map<String, Object> equalizerAudioEffectGetParameters() {

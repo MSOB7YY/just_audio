@@ -245,6 +245,12 @@ abstract class AudioPlayerPlatform {
         "androidLoudnessEnhancerSetTargetGain() has not been implemented.");
   }
 
+  Future<AndroidBassBoostSetStrengthResponse> androidBassBoostSetStrength(
+      AndroidBassBoostSetStrengthRequest request) {
+    throw UnimplementedError(
+        "androidBassBoostSetStrength() has not been implemented.");
+  }
+
   /// Gets the Android equalizer parameters.
   Future<AndroidEqualizerGetParametersResponse> androidEqualizerGetParameters(
       AndroidEqualizerGetParametersRequest request) {
@@ -1458,12 +1464,30 @@ class AndroidLoudnessEnhancerSetTargetGainRequest {
       };
 }
 
+class AndroidBassBoostSetStrengthRequest {
+  final double strength;
+
+  const AndroidBassBoostSetStrengthRequest({
+    required this.strength,
+  });
+
+  Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
+        'strength': strength,
+      };
+}
+
 /// Information returned by the platform implementation after setting the target
 /// gain on the loudness enhancer audio effect.
 class AndroidLoudnessEnhancerSetTargetGainResponse {
   static AndroidLoudnessEnhancerSetTargetGainResponse fromMap(
           Map<dynamic, dynamic> map) =>
       AndroidLoudnessEnhancerSetTargetGainResponse();
+}
+
+class AndroidBassBoostSetStrengthResponse {
+  static AndroidBassBoostSetStrengthResponse fromMap(
+          Map<dynamic, dynamic> map) =>
+      AndroidBassBoostSetStrengthResponse();
 }
 
 /// Information communicated to the platform implementation when requesting the
@@ -1541,6 +1565,24 @@ class AndroidLoudnessEnhancerMessage extends AudioEffectMessage {
         'type': 'AndroidLoudnessEnhancer',
         'enabled': enabled,
         'targetGain': targetGain,
+      };
+}
+
+/// Information about bass boost to be communicated with the platform
+/// implementation.
+class AndroidBassBoostMessage extends AudioEffectMessage {
+  final double strength;
+
+  const AndroidBassBoostMessage({
+    required super.enabled,
+    required this.strength,
+  });
+
+  @override
+  Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
+        'type': 'AndroidBassBoost',
+        'enabled': enabled,
+        'strength': strength,
       };
 }
 
