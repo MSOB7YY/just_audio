@@ -560,11 +560,12 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         handledVideoError = true;
         this.videoOptions = null;
         this.mediaSource = this.audioSource;
+        int currentWindowIndex = player.getCurrentMediaItemIndex();
         long pos = player.getCurrentPosition();
         if (pos < 0)
           pos = 0;
         player.setMediaSource(this.mediaSource);
-        player.seekTo(pos);
+        player.seekTo(currentWindowIndex, pos);
         player.prepare();
         return;
       }
@@ -1032,11 +1033,12 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
       if (finalSource != null) {
         this.mediaSource = finalSource;
+        int currentWindowIndex = player.getCurrentMediaItemIndex();
         long pos = player.getCurrentPosition();
         if (pos < 0)
           pos = 0;
         player.setMediaSource(this.mediaSource);
-        player.seekTo(pos);
+        player.seekTo(currentWindowIndex, pos);
         // player.setVideoSurface(surface);
         player.prepare();
       }
