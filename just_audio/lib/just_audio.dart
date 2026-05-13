@@ -1271,8 +1271,17 @@ class AudioPlayer {
         usage: audioAttributes.usage.value));
   }
 
-  Future<void> freePlayer() async {
+  Future<void> freePlayer({bool resetVars = true}) async {
     if (_disposed) return;
+    if (resetVars) {
+      // ignore: unnecessary_this
+      this.videoOptions?.source._dispose();
+      audioSource?._dispose();
+
+      _audioSource = null;
+      _videoOptions = null;
+    }
+
     if (_nativePlatform != null) {
       return _freePlatform(await _nativePlatform!);
     }
