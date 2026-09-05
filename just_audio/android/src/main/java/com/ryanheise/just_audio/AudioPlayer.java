@@ -431,6 +431,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     updateCurrentIndex();
     switch (reason) {
       case Player.DISCONTINUITY_REASON_AUTO_TRANSITION:
+        // -- new item, it deserves its own decoders fallback attempt.
+        didFallbackForItem = false;
         broadcastImmediatePlaybackEvent(true);
         break;
       case Player.DISCONTINUITY_REASON_SEEK:
@@ -1488,8 +1490,17 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       return;
     }
 
-    MediaItem mediaItem = player.getCurrentMediaItem();
-    long position = player.getCurrentPosition();
+    // -- restoring the media source itself, `MediaItem` would lose custom/merging/concatenating sources.
+    final MediaSource sourceToRestore = this.mediaSource;
+    if (sourceToRestore == null) return;
+
+    final int windowIndex = player.getCurrentMediaItemIndex();
+    final long position = Math.max(0, player.getCurrentPosition());
+    final boolean playWhenReady = player.getPlayWhenReady();
+    final float volume = player.getVolume();
+    final PlaybackParameters playbackParameters = player.getPlaybackParameters();
+    final boolean skipSilenceEnabled = player.getSkipSilenceEnabled();
+    final AudioAttributes audioAttributes = player.getAudioAttributes();
 
     didFallbackForItem = true;
     rendererTier = nextTier;
@@ -1499,10 +1510,14 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
     ensurePlayerInitialized();
 
-    player.setMediaItem(mediaItem);
-    player.seekTo(position);
+    player.setAudioAttributes(audioAttributes, false);
+    player.setVolume(volume);
+    player.setPlaybackParameters(playbackParameters);
+    player.setSkipSilenceEnabled(skipSilenceEnabled);
+    player.setMediaSource(sourceToRestore);
+    player.seekTo(windowIndex, position);
+    player.setPlayWhenReady(playWhenReady);
     player.prepare();
-    player.play();
   }
 
 
