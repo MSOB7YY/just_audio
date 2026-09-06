@@ -2297,10 +2297,14 @@ class VideoSourceOptions {
   final bool videoOnly;
   final bool loop;
 
+  /// Duration of [source], only needed by players that build the looping timeline themselves.
+  final int? durationMS;
+
   const VideoSourceOptions({
     required this.source,
     required this.videoOnly,
     required this.loop,
+    this.durationMS,
   });
 
   Map<dynamic, dynamic> toMap() => {
