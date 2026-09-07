@@ -16,7 +16,7 @@ import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
 
 export 'package:just_audio_platform_interface/just_audio_platform_interface.dart'
-    show AudioTrack;
+    show AudioTrack, TextTrack;
 
 typedef VideoInfoData = VideoDataMessage;
 
@@ -126,6 +126,8 @@ class AudioPlayer {
   final _bufferedPositionSubject = BehaviorSubject<Duration>();
   final _icyMetadataSubject = BehaviorSubject<IcyMetadata?>();
   final _audioTracksSubject = BehaviorSubject<List<AudioTrack>?>();
+  final _textTracksSubject = BehaviorSubject<List<TextTrack>?>();
+  final _subtitleTextSubject = BehaviorSubject<String?>();
   final _playerStateSubject = BehaviorSubject<PlayerState>();
   final _sequenceSubject = BehaviorSubject<List<IndexedSource>?>();
   final _shuffleIndicesSubject = BehaviorSubject<List<int>?>();
@@ -219,6 +221,14 @@ class AudioPlayer {
         .handleError((Object err, StackTrace stackTrace) {/* noop */}));
     _audioTracksSubject.addStream(playbackEventStream
         .map((event) => event.audioTracks)
+        .distinct()
+        .handleError((Object err, StackTrace stackTrace) {/* noop */}));
+    _textTracksSubject.addStream(playbackEventStream
+        .map((event) => event.textTracks)
+        .distinct()
+        .handleError((Object err, StackTrace stackTrace) {/* noop */}));
+    _subtitleTextSubject.addStream(playbackEventStream
+        .map((event) => event.subtitleText)
         .distinct()
         .handleError((Object err, StackTrace stackTrace) {/* noop */}));
     _playbackEventStreamSub = playbackEventStream.pairwise().listen((pair) {
@@ -462,6 +472,13 @@ class AudioPlayer {
   List<AudioTrack>? get audioTracks => _playbackEvent.audioTracks;
 
   Stream<List<AudioTrack>?> get audioTracksStream => _audioTracksSubject.stream;
+
+  List<TextTrack>? get textTracks => _playbackEvent.textTracks;
+
+  Stream<List<TextTrack>?> get textTracksStream => _textTracksSubject.stream;
+
+  /// The text of the subtitle cue currently being displayed, null when there is none.
+  Stream<String?> get subtitleTextStream => _subtitleTextSubject.stream;
 
   /// The current player state containing only the processing and playing
   /// states.
@@ -869,6 +886,10 @@ class AudioPlayer {
 
   Future<void> setAudioTrack(String? trackId) async {
     return await (await _platform).setAudioTrack(trackId);
+  }
+
+  Future<void> setTextTrack(String? trackId) async {
+    return await (await _platform).setTextTrack(trackId);
   }
 
   void _broadcastSequence() {
@@ -1344,6 +1365,8 @@ class AudioPlayer {
       _bufferedPositionSubject.close,
       _icyMetadataSubject.close,
       _audioTracksSubject.close,
+      _textTracksSubject.close,
+      _subtitleTextSubject.close,
       _androidAudioSessionIdSubject.close,
       _playerStateSubject.close,
       _skipSilenceEnabledSubject.close,
@@ -1467,6 +1490,8 @@ class AudioPlayer {
               ? null
               : IcyMetadata._fromMessage(message.icyMetadata!),
           audioTracks: message.audioTracks,
+          textTracks: message.textTracks,
+          subtitleText: message.subtitleText,
           currentIndex: index,
           androidAudioSessionId: message.androidAudioSessionId,
           autoTransition: message.autoTransition,
@@ -1734,6 +1759,11 @@ class PlaybackEvent {
 
   final List<AudioTrack>? audioTracks;
 
+  final List<TextTrack>? textTracks;
+
+  /// The text of the subtitle cue currently being displayed, if any.
+  final String? subtitleText;
+
   /// The index of the currently playing item, or `null` if no item is selected.
   final int? currentIndex;
 
@@ -1750,6 +1780,8 @@ class PlaybackEvent {
     this.duration,
     this.icyMetadata,
     this.audioTracks,
+    this.textTracks,
+    this.subtitleText,
     this.currentIndex,
     this.androidAudioSessionId,
     this.autoTransition,
@@ -1764,6 +1796,8 @@ class PlaybackEvent {
     Duration? duration,
     IcyMetadata? icyMetadata,
     List<AudioTrack>? audioTracks,
+    List<TextTrack>? textTracks,
+    String? subtitleText,
     int? currentIndex,
     int? androidAudioSessionId,
     bool? autoTransition,
@@ -1776,6 +1810,8 @@ class PlaybackEvent {
         duration: duration ?? this.duration,
         icyMetadata: icyMetadata ?? this.icyMetadata,
         audioTracks: audioTracks ?? this.audioTracks,
+        textTracks: textTracks ?? this.textTracks,
+        subtitleText: subtitleText ?? this.subtitleText,
         currentIndex: currentIndex ?? this.currentIndex,
         androidAudioSessionId:
             androidAudioSessionId ?? this.androidAudioSessionId,
@@ -1791,6 +1827,8 @@ class PlaybackEvent {
         duration,
         icyMetadata,
         audioTracks,
+        textTracks,
+        subtitleText,
         currentIndex,
         androidAudioSessionId,
         autoTransition,
@@ -1807,6 +1845,8 @@ class PlaybackEvent {
       duration == other.duration &&
       icyMetadata == other.icyMetadata &&
       audioTracks == other.audioTracks &&
+      textTracks == other.textTracks &&
+      subtitleText == other.subtitleText &&
       currentIndex == other.currentIndex &&
       androidAudioSessionId == other.androidAudioSessionId &&
       autoTransition == other.autoTransition;
@@ -3767,6 +3807,9 @@ class _IdleAudioPlayer extends AudioPlayerPlatform {
 
   @override
   Future<void> setAudioTrack(String? trackId) async {}
+
+  @override
+  Future<void> setTextTrack(String? trackId) async {}
 
   @override
   Future<PlayResponse> play(PlayRequest request) async {

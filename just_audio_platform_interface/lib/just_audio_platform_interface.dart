@@ -98,6 +98,11 @@ abstract class AudioPlayerPlatform {
     throw UnimplementedError("setAudioTrack() has not been implemented.");
   }
 
+  /// Selects an embedded text (subtitle) track, use null to disable text output.
+  Future<void> setTextTrack(String? trackId) async {
+    throw UnimplementedError("setTextTrack() has not been implemented.");
+  }
+
   /// Retrieves the currently active preset.
   Future<int?> getCurrentPreset() async {
     throw UnimplementedError("getCurrentPreset() has not been implemented.");
@@ -425,6 +430,8 @@ class PlaybackEventMessage {
   final Duration? duration;
   final IcyMetadataMessage? icyMetadata;
   final List<AudioTrack>? audioTracks;
+  final List<TextTrack>? textTracks;
+  final String? subtitleText;
   final int? currentIndex;
   final int? androidAudioSessionId;
   final bool? autoTransition;
@@ -437,6 +444,8 @@ class PlaybackEventMessage {
     required this.duration,
     required this.icyMetadata,
     required this.audioTracks,
+    this.textTracks,
+    this.subtitleText,
     required this.currentIndex,
     this.androidAudioSessionId,
     this.autoTransition,
@@ -461,6 +470,10 @@ class PlaybackEventMessage {
         audioTracks: map['audioTracks'] == null
             ? null
             : (map['audioTracks'] as List).map(AudioTrack.fromMap).toList(),
+        textTracks: map['textTracks'] == null
+            ? null
+            : (map['textTracks'] as List).map(TextTrack.fromMap).toList(),
+        subtitleText: map['subtitleText'] as String?,
         currentIndex: map['currentIndex'] as int?,
         androidAudioSessionId: map['androidAudioSessionId'] as int?,
         autoTransition: map['autoTransition'] as bool?,
@@ -540,6 +553,45 @@ class AudioTrack {
   }
 
   String get displayName => language ?? label ?? id ?? 'Track $trackIndex';
+}
+
+/// An embedded text (subtitle/caption) track, reported by the platform implementation.
+class TextTrack {
+  final int groupIndex;
+  final int trackIndex;
+  final bool isSelected;
+  final bool isSupported;
+  final String? id;
+  final String? label;
+  final String? language;
+  final String? mimeType;
+
+  const TextTrack({
+    required this.groupIndex,
+    required this.trackIndex,
+    required this.isSelected,
+    this.isSupported = true,
+    this.id,
+    this.label,
+    this.language,
+    this.mimeType,
+  });
+
+  factory TextTrack.fromMap(dynamic map) {
+    map as Map;
+    return TextTrack(
+      groupIndex: map['groupIndex'] as int,
+      trackIndex: map['trackIndex'] as int,
+      isSelected: map['isSelected'] as bool,
+      isSupported: map['isSupported'] as bool? ?? true,
+      id: map['id'] as String?,
+      label: map['label'] as String?,
+      language: map['language'] as String?,
+      mimeType: map['mimeType'] as String?,
+    );
+  }
+
+  String get displayName => label ?? language ?? id ?? 'Track $trackIndex';
 }
 
 /// Icy info communicated from the platform implementation.

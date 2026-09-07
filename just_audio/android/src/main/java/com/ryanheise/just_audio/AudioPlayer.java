@@ -26,7 +26,9 @@ import androidx.media3.common.Metadata;
 import androidx.media3.common.Timeline;
 import androidx.media3.common.TrackGroup;
 import androidx.media3.common.Tracks;
+import androidx.media3.common.text.CueGroup;
 import androidx.media3.common.TrackSelectionOverride;
+import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.audio.AudioProcessor;
 import androidx.media3.common.audio.SonicAudioProcessor;
 import androidx.media3.common.util.UnstableApi;
@@ -109,6 +111,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private IcyInfo icyInfo;
   private IcyHeaders icyHeaders;
   private List<Map<String, Object>> audioTracks;
+  private List<Map<String, Object>> textTracks;
+  private String subtitleText;
   private int errorCount;
   private AudioAttributes pendingAudioAttributes;
   private LoadControl loadControl;
@@ -123,6 +127,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private boolean didFallbackForItem = false;
 
   private String pendingAudioTrackId = null;
+  // -- the text track the app wants, re-resolved whenever the tracks change (decoder fallback, reselections).
+  private String selectedTextTrackId = null;
 
   private final BetterEventChannel videoEventChannel;
   private TextureRegistry.SurfaceTextureEntry surfaceTextureEntry;
@@ -314,6 +320,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   @Override
   public void onTracksChanged(Tracks tracks) {
     sendAudioTracks(tracks);
+    applyTextTrackSelection(tracks);
+    sendTextTracks(tracks);
 
     for (int i = 0; i < tracks.getGroups().size(); i++) {
       TrackGroup trackGroup = tracks.getGroups().get(i).getMediaTrackGroup();
@@ -412,6 +420,129 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     pendingAudioTrackId = trackId;
   }
 
+  private void sendTextTracks(Tracks tracks) {
+    List<Map<String, Object>> textTrackList = new ArrayList<>();
+
+    for (int i = 0; i < tracks.getGroups().size(); i++) {
+      Tracks.Group group = tracks.getGroups().get(i);
+      if (group.getType() != C.TRACK_TYPE_TEXT) continue;
+
+      for (int j = 0; j < group.length; j++) {
+        Format format = group.getTrackFormat(j);
+        Map<String, Object> trackMap = new HashMap<>();
+        trackMap.put("groupIndex", i);
+        trackMap.put("trackIndex", j);
+        trackMap.put("isSelected", group.isTrackSelected(j));
+        trackMap.put("isSupported", group.isTrackSupported(j));
+        trackMap.put("id", textTrackId(format, i, j));
+        trackMap.put("label", format.label);
+        trackMap.put("language", format.language);
+        trackMap.put("mimeType", textTrackMimeType(format));
+        textTrackList.add(trackMap);
+      }
+    }
+    this.textTracks = textTrackList;
+    broadcastImmediatePlaybackEvent();
+  }
+
+  private static String textTrackId(Format format, int groupIndex, int trackIndex) {
+    return format.id != null ? format.id : (groupIndex + ":" + trackIndex);
+  }
+
+  // -- subtitles get parsed during extraction, the original mime type survives in `codecs`.
+  private static String textTrackMimeType(Format format) {
+    if (MimeTypes.APPLICATION_MEDIA3_CUES.equals(format.sampleMimeType) && format.codecs != null) return format.codecs;
+    return format.sampleMimeType;
+  }
+
+  /// text rendering stays off until a track is picked, so no cues are decoded needlessly.
+  public void setTextTrack(String trackId) {
+    selectedTextTrackId = trackId;
+    if (subtitleText != null) {
+      subtitleText = null;
+      broadcastImmediatePlaybackEvent();
+    }
+    if (player != null) applyTextTrackSelection(player.getCurrentTracks());
+  }
+
+  private void clearTextTrackSelection() {
+    selectedTextTrackId = null;
+    if (subtitleText != null) {
+      subtitleText = null;
+      broadcastImmediatePlaybackEvent();
+    }
+    disableTextRendering();
+  }
+
+  private void disableTextRendering() {
+    if (player == null) return;
+    TrackSelectionParameters params = player.getTrackSelectionParameters();
+    if (params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) && !hasTextOverride(params)) return;
+    player.setTrackSelectionParameters(
+      params.buildUpon()
+        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+        .build()
+    );
+  }
+
+  private static boolean hasTextOverride(TrackSelectionParameters params) {
+    for (TrackSelectionOverride override : params.overrides.values()) {
+      if (override.getType() == C.TRACK_TYPE_TEXT) return true;
+    }
+    return false;
+  }
+
+  /// selects [selectedTextTrackId] within [tracks], disabling text output when it can't be found.
+  private void applyTextTrackSelection(Tracks tracks) {
+    if (player == null) return;
+    String trackId = selectedTextTrackId;
+    boolean anySelected = false;
+
+    for (int i = 0; i < tracks.getGroups().size(); i++) {
+      Tracks.Group group = tracks.getGroups().get(i);
+      if (group.getType() != C.TRACK_TYPE_TEXT) continue;
+
+      for (int j = 0; j < group.length; j++) {
+        boolean isSelected = group.isTrackSelected(j);
+        anySelected |= isSelected;
+        if (trackId == null || !trackId.equals(textTrackId(group.getTrackFormat(j), i, j))) continue;
+        if (isSelected) return;
+
+        player.setTrackSelectionParameters(
+          player.getTrackSelectionParameters()
+            .buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .setOverrideForType(new TrackSelectionOverride(group.getMediaTrackGroup(), j))
+            .build()
+        );
+        return;
+      }
+    }
+
+    // -- nothing matched (or nothing wanted), never let exoplayer pick a track on its own.
+    if (anySelected || trackId == null) disableTextRendering();
+  }
+
+  @Override
+  public void onCues(CueGroup cueGroup) {
+    String text = null;
+    if (selectedTextTrackId != null && !cueGroup.cues.isEmpty()) {
+      StringBuilder sb = new StringBuilder();
+      for (int i = 0; i < cueGroup.cues.size(); i++) {
+        CharSequence cueText = cueGroup.cues.get(i).text;
+        if (cueText == null || cueText.length() == 0) continue;
+        if (sb.length() > 0) sb.append('\n');
+        sb.append(cueText);
+      }
+      if (sb.length() > 0) text = sb.toString();
+    }
+
+    if (text == null ? subtitleText == null : text.equals(subtitleText)) return;
+    subtitleText = text;
+    broadcastImmediatePlaybackEvent();
+  }
+
   private boolean updatePositionIfChanged() {
     if (getCurrentPosition() == updatePosition)
       return false;
@@ -433,6 +564,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       case Player.DISCONTINUITY_REASON_AUTO_TRANSITION:
         // -- new item, it deserves its own decoders fallback attempt.
         didFallbackForItem = false;
+        clearTextTrackSelection();
         broadcastImmediatePlaybackEvent(true);
         break;
       case Player.DISCONTINUITY_REASON_SEEK:
@@ -638,6 +770,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         case "setAudioTrack":
           String trackId = call.argument("trackId");
           setAudioTrack(trackId);
+          result.success(new HashMap<String, Object>());
+          break;
+        case "setTextTrack":
+          setTextTrack(call.argument("trackId"));
           result.success(new HashMap<String, Object>());
           break;
         case "play":
@@ -944,9 +1080,12 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       final Integer initialIndex, final String audioTrackId, final Boolean keepOldVideoSource, final Result result) {
     this.pendingAudioTrackId = audioTrackId;
     this.audioTracks = null;
+    this.textTracks = null;
+    this.subtitleText = null;
     this.initialIndex = initialIndex;
     this.audioSource = audioSource;
     resetDecodersStrategy();
+    clearTextTrackSelection();
     currentIndex = initialIndex != null ? initialIndex : 0;
     switch (processingState) {
       case none:
@@ -1155,6 +1294,13 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
       builder.setRenderersFactory(renderersFactory);
       player = builder.build();
+      // -- text rendering stays off until a subtitle track is explicitly picked
+      player.setTrackSelectionParameters(
+        player.getTrackSelectionParameters()
+          .buildUpon()
+          .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+          .build()
+      );
       setAudioSessionId(player.getAudioSessionId());
       if (surface != null) {
         player.setVideoSurface(surface);
@@ -1265,6 +1411,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     event.put("bufferedPosition", 1000 * Math.max(updatePosition, bufferedPosition));
     event.put("icyMetadata", collectIcyMetadata());
     event.put("audioTracks", audioTracks);
+    event.put("textTracks", textTracks);
+    event.put("subtitleText", subtitleText);
     event.put("duration", duration);
     event.put("currentIndex", currentIndex);
     event.put("androidAudioSessionId", audioSessionId);
