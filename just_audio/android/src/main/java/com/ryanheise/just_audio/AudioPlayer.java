@@ -39,6 +39,8 @@ import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
 import androidx.media3.exoplayer.ExoPlaybackException;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.LivePlaybackSpeedControl;
@@ -126,6 +128,20 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private RendererTier rendererTier = RendererTier.HW;
   private boolean didFallbackForItem = false;
 
+  // -- the SW tier puts software codecs first, hardware ones can hang without ever reporting an error.
+  private static final MediaCodecSelector SOFTWARE_FIRST_CODEC_SELECTOR = (mimeType, requiresSecureDecoder, requiresTunnelingDecoder) -> {
+    List<MediaCodecInfo> infos = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
+    List<MediaCodecInfo> sorted = new ArrayList<>(infos.size());
+    for (MediaCodecInfo info : infos) if (info.softwareOnly) sorted.add(info);
+    for (MediaCodecInfo info : infos) if (!info.softwareOnly) sorted.add(info);
+    return sorted;
+  };
+
+  // -- a decoder that accepts the stream but never outputs keeps the player buffering with data available.
+  private static final long STUCK_BUFFERING_MIN_BUFFERED_MS = 3000;
+  private static final long STUCK_BUFFERING_TIMEOUT_MS = 8000;
+  private long stuckBufferingSinceMs = 0;
+
   private String pendingAudioTrackId = null;
   // -- the text track the app wants, re-resolved whenever the tracks change (decoder fallback, reselections).
   private String selectedTextTrackId = null;
@@ -159,9 +175,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       }
       switch (player.getPlaybackState()) {
         case Player.STATE_BUFFERING:
+          if (checkStuckBuffering()) return;
           handler.postDelayed(this, 200);
           break;
         case Player.STATE_READY:
+          stuckBufferingSinceMs = 0;
           if (player.getPlayWhenReady()) {
             handler.postDelayed(this, 500);
           } else {
@@ -169,6 +187,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
           }
           break;
         default:
+          stuckBufferingSinceMs = 0;
           // Stop watching buffer
       }
     }
@@ -241,6 +260,24 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private void startWatchingBuffer() {
     handler.removeCallbacks(bufferWatcher);
     handler.post(bufferWatcher);
+  }
+
+  /// returns true when the renderers were swapped, the new player restarts the watcher itself.
+  private boolean checkStuckBuffering() {
+    if (didFallbackForItem || !player.getPlayWhenReady() || player.getTotalBufferedDuration() < STUCK_BUFFERING_MIN_BUFFERED_MS) {
+      stuckBufferingSinceMs = 0;
+      return false;
+    }
+    long now = System.currentTimeMillis();
+    if (stuckBufferingSinceMs == 0) {
+      stuckBufferingSinceMs = now;
+      return false;
+    }
+    if (now - stuckBufferingSinceMs < STUCK_BUFFERING_TIMEOUT_MS) return false;
+    stuckBufferingSinceMs = 0;
+    Log.d(TAG, "playback stuck buffering with data available, swapping decoders");
+    fallbackRenderer();
+    return true;
   }
 
   private void setAudioSessionId(int audioSessionId) {
@@ -681,7 +718,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     if (!didFallbackForItem){
         int code = error.errorCode;
         if (code == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
-            code == PlaybackException.ERROR_CODE_DECODING_FAILED) {
+            code == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED ||
+            code == PlaybackException.ERROR_CODE_DECODING_FAILED ||
+            code == PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES ||
+            code == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED) {
             fallbackRenderer();
             return;
         }
@@ -1085,6 +1125,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     this.initialIndex = initialIndex;
     this.audioSource = audioSource;
     resetDecodersStrategy();
+    stuckBufferingSinceMs = 0;
     clearTextTrackSelection();
     currentIndex = initialIndex != null ? initialIndex : 0;
     switch (processingState) {
@@ -1290,6 +1331,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
               .build();
         }
       }.setExtensionRendererMode(rendererMode)
+          .setMediaCodecSelector(rendererTier == RendererTier.SW ? SOFTWARE_FIRST_CODEC_SELECTOR : MediaCodecSelector.DEFAULT)
           .setEnableDecoderFallback(true);
 
       builder.setRenderersFactory(renderersFactory);
