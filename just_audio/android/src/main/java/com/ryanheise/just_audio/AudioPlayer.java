@@ -38,7 +38,10 @@ import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl;
 import androidx.media3.exoplayer.DefaultLoadControl;
+import androidx.media3.decoder.ffmpeg.ExperimentalFfmpegVideoRenderer;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.exoplayer.Renderer;
+import androidx.media3.exoplayer.video.VideoRendererEventListener;
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
 import androidx.media3.exoplayer.ExoPlaybackException;
@@ -1314,7 +1317,35 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                     ? DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
                     : DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER;
 
+      final boolean softwareTier = rendererTier == RendererTier.SW;
       RenderersFactory renderersFactory = new DefaultRenderersFactory(context) {
+        // -- ffmpeg is the only real software video path (MediaCodec software decoders are 8-bit only).
+        // -- HW tier: last resort behind MediaCodec, SW tier: first choice.
+        @Override
+        protected void buildVideoRenderers(Context context, int extensionRendererMode, MediaCodecSelector mediaCodecSelector,
+            boolean enableDecoderFallback, Handler eventHandler, VideoRendererEventListener eventListener,
+            long allowedVideoJoiningTimeMs, ArrayList<Renderer> out) {
+          super.buildVideoRenderers(context, extensionRendererMode, mediaCodecSelector, enableDecoderFallback, eventHandler,
+              eventListener, allowedVideoJoiningTimeMs, out);
+          for (int i = out.size() - 1; i >= 0; i--) {
+            if (out.get(i) instanceof ExperimentalFfmpegVideoRenderer) out.remove(i);
+          }
+          Renderer ffmpegVideo = new ExperimentalFfmpegVideoRenderer(
+              allowedVideoJoiningTimeMs,
+              eventHandler,
+              eventListener,
+              MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY,
+              Runtime.getRuntime().availableProcessors(),
+              /* numInputBuffers= */ 4,
+              /* numOutputBuffers= */ 4,
+              /* yieldToMediaCodec= */ !softwareTier);
+          if (softwareTier) {
+            out.add(0, ffmpegVideo);
+          } else {
+            out.add(ffmpegVideo);
+          }
+        }
+
         @Override
         protected AudioSink buildAudioSink(Context context, boolean enableFloatOutput,
             boolean enableAudioTrackPlaybackParams) {
