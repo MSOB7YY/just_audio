@@ -435,6 +435,7 @@ class PlaybackEventMessage {
   final int? currentIndex;
   final int? androidAudioSessionId;
   final bool? autoTransition;
+  final bool? playing;
 
   const PlaybackEventMessage({
     required this.processingState,
@@ -449,6 +450,7 @@ class PlaybackEventMessage {
     required this.currentIndex,
     this.androidAudioSessionId,
     this.autoTransition,
+    this.playing,
   });
 
   static PlaybackEventMessage fromMap(Map<dynamic, dynamic> map) =>
@@ -477,6 +479,7 @@ class PlaybackEventMessage {
         currentIndex: map['currentIndex'] as int?,
         androidAudioSessionId: map['androidAudioSessionId'] as int?,
         autoTransition: map['autoTransition'] as bool?,
+        playing: map['playing'] as bool?,
       );
 }
 

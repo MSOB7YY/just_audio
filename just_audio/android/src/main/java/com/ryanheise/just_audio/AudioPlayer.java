@@ -655,6 +655,12 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   }
 
   @Override
+  public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
+    updatePosition();
+    broadcastImmediatePlaybackEvent();
+  }
+
+  @Override
   public void onPlaybackStateChanged(int playbackState) {
     switch (playbackState) {
       case Player.STATE_READY:
@@ -1479,6 +1485,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     Long duration = getDuration() == C.TIME_UNSET ? null : (1000 * getDuration());
     bufferedPosition = player != null ? player.getBufferedPosition() : 0L;
     event.put("processingState", processingState.ordinal());
+    event.put("playing", player != null && player.getPlayWhenReady());
     event.put("updatePosition", 1000 * updatePosition);
     event.put("updateTime", updateTime);
     event.put("bufferedPosition", 1000 * Math.max(updatePosition, bufferedPosition));

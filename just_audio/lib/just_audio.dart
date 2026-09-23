@@ -102,6 +102,9 @@ class AudioPlayer {
 
   StreamSubscription<VideoDataMessage>? _videoDataSubscription;
 
+  /// Last reported by the platform, [playing] is only what was requested.
+  bool? _platformPlaying;
+
   final String _id;
   final _proxy = _ProxyHttpServer();
   AudioVideoSource? _audioSource;
@@ -613,7 +616,9 @@ class AudioPlayer {
   Duration get position => _getPositionFor(_playbackEvent);
 
   Duration _getPositionFor(PlaybackEvent playbackEvent) {
-    if (playing && processingState == ProcessingState.ready) {
+    if (playing &&
+        _platformPlaying != false &&
+        processingState == ProcessingState.ready) {
       final result = playbackEvent.updatePosition +
           (DateTime.now().difference(playbackEvent.updateTime)) * speed;
       return playbackEvent.duration == null || result <= playbackEvent.duration!
@@ -1023,7 +1028,8 @@ class AudioPlayer {
   /// nothing if activation of the audio session fails for any reason.
   Future<void> play({bool waitForCompletion = false}) async {
     if (_disposed) return;
-    if (playing) return;
+    final wasPlaying = playing;
+    if (wasPlaying && _platformPlaying != false) return;
     _playInterrupted = false;
     // Broadcast to clients immediately, but revert to false if we fail to
     // activate the audio session. This allows setSource to be aware of a
@@ -1032,7 +1038,8 @@ class AudioPlayer {
       updatePosition: position,
       updateTime: DateTime.now(),
     );
-    _playingSubject.add(true);
+    _platformPlaying = true;
+    if (!wasPlaying) _playingSubject.add(true);
     _playbackEventSubject.add(_playbackEvent);
     final playCompleter = Completer<dynamic>();
     final audioSession = await AudioSession.instance;
@@ -1439,6 +1446,7 @@ class AudioPlayer {
     final audioSource = _audioSource;
 
     void subscribeToEvents(AudioPlayerPlatform platform) {
+      _platformPlaying = null;
       _playerDataSubscription =
           platform.playerDataMessageStream.listen((message) {
         if (message.playing != null && message.playing != playing) {
@@ -1463,6 +1471,7 @@ class AudioPlayer {
       });
       _playbackEventSubscription =
           platform.playbackEventMessageStream.listen((message) {
+        _platformPlaying = message.playing;
         var duration = message.duration;
         var index = message.currentIndex ?? currentIndex;
         if (index != null && sequence != null && index < sequence!.length) {
