@@ -1209,7 +1209,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       disposeLoopingPlayer();
       MediaSource finalSource = null;
       if (videoSource != null) {
-        finalSource = new MergingMediaSource(this.audioSource, videoSource);
+        // -- null when freed, nothing to merge with until the next load.
+        if (this.audioSource != null) finalSource = new MergingMediaSource(this.audioSource, videoSource);
       } else {
         // null video, remove if was set before
         if (this.mediaSource instanceof MergingMediaSource) {
@@ -1691,13 +1692,15 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       abortExistingConnection();
     }
     if (player != null) {
-      player.release();
-      player = null;
+      player.stop();
       processingState = ProcessingState.none;
+      player.clearMediaItems();
       broadcastImmediatePlaybackEvent();
     }
     disposeLoopingPlayer();
     mediaSource = null;
+    audioSource = null;
+    videoOptions = null;
   }
 
   private void fallbackRenderer() {
@@ -1753,6 +1756,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     freeTemporarily();
     if (player != null) {
       player.clearVideoSurface();
+      player.release();
+      player = null;
     }
 
     if (playResult != null) {

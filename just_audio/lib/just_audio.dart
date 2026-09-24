@@ -84,6 +84,9 @@ class AudioPlayer {
   /// and set to `null` when not in use.
   Future<AudioPlayerPlatform>? _nativePlatform;
 
+  /// Set by [freePlayer], its idle must not deactivate the native platform.
+  bool _nativePlatformFreed = false;
+
   /// A pure Dart implementation of the platform interface for use when the
   /// native platform is not needed.
   _IdleAudioPlayer? _idlePlatform;
@@ -931,6 +934,7 @@ class AudioPlayer {
     String? audioTrackId,
     required bool keepOldVideoSource,
   }) async {
+    _nativePlatformFreed = false;
     final activationNumber = _activationCount;
     void checkInterruption() {
       if (_activationCount != activationNumber) {
@@ -1299,18 +1303,17 @@ class AudioPlayer {
         usage: audioAttributes.usage.value));
   }
 
-  Future<void> freePlayer({bool resetVars = true}) async {
+  Future<void> freePlayer() async {
     if (_disposed) return;
-    if (resetVars) {
-      // ignore: unnecessary_this
-      this.videoOptions?.source._dispose();
-      audioSource?._dispose();
+    // ignore: unnecessary_this
+    this.videoOptions?.source._dispose();
+    audioSource?._dispose();
 
-      _audioSource = null;
-      _videoOptions = null;
-    }
+    _audioSource = null;
+    _videoOptions = null;
 
     if (_nativePlatform != null) {
+      _nativePlatformFreed = true;
       return _freePlatform(await _nativePlatform!);
     }
   }
@@ -1516,7 +1519,8 @@ class AudioPlayer {
         _playbackEventSubject.add(_playbackEvent = playbackEvent);
         if (_playbackEvent.processingState !=
                 oldPlaybackEvent.processingState &&
-            _playbackEvent.processingState == ProcessingState.idle) {
+            _playbackEvent.processingState == ProcessingState.idle &&
+            !_nativePlatformFreed) {
           _setPlatformActive(false)?.catchError((dynamic e) async => null);
         }
       }, onError: _playbackEventSubject.addError);
@@ -1691,7 +1695,6 @@ class AudioPlayer {
     if (platform is _IdleAudioPlayer) {
       await platform.freeTemporarily(FreeRequest());
     } else {
-      _nativePlatform = null;
       try {
         _videoInfoSubject.add(VideoDataMessage.dummy());
         await _pluginPlatform.freePlayer(DisposePlayerRequest(id: _id));
