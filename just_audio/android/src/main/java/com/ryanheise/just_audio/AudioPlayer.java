@@ -40,6 +40,7 @@ import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.decoder.ffmpeg.ExperimentalFfmpegVideoRenderer;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.exoplayer.NoSampleRenderer;
 import androidx.media3.exoplayer.Renderer;
 import androidx.media3.exoplayer.video.VideoRendererEventListener;
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
@@ -194,6 +195,9 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
           // Stop watching buffer
       }
     }
+  };
+  private final Runnable positionResync = () -> {
+    if (updatePositionIfChanged()) broadcastImmediatePlaybackEvent();
   };
 
   public AudioPlayer(final Context applicationContext, final BinaryMessenger messenger, final String id,
@@ -584,9 +588,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   }
 
   private boolean updatePositionIfChanged() {
-    if (getCurrentPosition() == updatePosition)
-      return false;
-    updatePosition = getCurrentPosition();
+    if (player == null) return false;
+    final long position = getCurrentPosition();
+    final boolean isAdvancing = player.getPlayWhenReady() && processingState == ProcessingState.ready;
+    if (!isAdvancing && position == updatePosition) return false;
+    updatePosition = position;
     updateTime = System.currentTimeMillis();
     return true;
   }
@@ -1354,6 +1360,13 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         }
 
         @Override
+        protected void buildMiscellaneousRenderers(Context context, Handler extensionRendererHandler,
+            int extensionRendererMode, ArrayList<Renderer> out) {
+          super.buildMiscellaneousRenderers(context, extensionRendererHandler, extensionRendererMode, out);
+          out.add(new PositionObserverRenderer());
+        }
+
+        @Override
         protected AudioSink buildAudioSink(Context context, boolean enableFloatOutput,
             boolean enableAudioTrackPlaybackParams) {
           return new DefaultAudioSink.Builder(context)
@@ -1573,7 +1586,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   }
 
   private long getDuration() {
-    if (processingState == ProcessingState.none || processingState == ProcessingState.loading) {
+    if (processingState == ProcessingState.none || processingState == ProcessingState.loading || player == null) {
       return C.TIME_UNSET;
     } else {
       return player.getDuration();
@@ -1834,6 +1847,30 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
   enum ProcessingState {
     none, loading, buffering, ready, completed
+  }
+
+  // -- resyncs the position once it moves again after stalling (bluetooth output latency).
+  private final class PositionObserverRenderer extends NoSampleRenderer {
+    private static final int MIN_STALLED_RENDERS = 3;
+
+    private long lastPositionUs = 0L;
+    private int stalledRenders = 0;
+
+    @Override
+    public void render(long positionUs, long elapsedRealtimeUs) {
+      if (positionUs == lastPositionUs) {
+        stalledRenders++;
+        return;
+      }
+      if (stalledRenders >= MIN_STALLED_RENDERS) handler.post(positionResync);
+      stalledRenders = 0;
+      lastPositionUs = positionUs;
+    }
+
+    @Override
+    public String getName() {
+      return "PositionObserverRenderer";
+    }
   }
 
   public Boolean willPlayWhenReady() {
