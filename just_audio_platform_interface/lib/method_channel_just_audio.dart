@@ -30,6 +30,49 @@ class MethodChannelJustAudio extends JustAudioPlatform {
         (await _mainChannel.invokeMethod<Map<dynamic, dynamic>>(
             'disposeAllPlayers', request.toMap()))!);
   }
+
+  @override
+  Future<void> setParametricEqualizer(ParametricEqualizerMessage message) {
+    return _mainChannel.invokeMethod<void>(
+        'setParametricEqualizer', message.toMap());
+  }
+
+  @override
+  Future<AudioOutputEventMessage> getAudioOutputState() async {
+    return AudioOutputEventMessage.fromMap((await _mainChannel
+        .invokeMethod<Map<dynamic, dynamic>>('getAudioOutputState'))!);
+  }
+
+  @override
+  Future<void> setPreferredAudioOutputDevice(int? deviceId) {
+    return _mainChannel.invokeMethod<void>('setPreferredAudioOutputDevice',
+        <dynamic, dynamic>{'deviceId': deviceId});
+  }
+
+  @override
+  Future<void> setBitPerfectEnabled(bool enabled) {
+    return _mainChannel.invokeMethod<void>(
+        'setBitPerfectEnabled', <dynamic, dynamic>{'enabled': enabled});
+  }
+
+  @override
+  Future<void> setMonoAudio(bool enabled) {
+    return _mainChannel.invokeMethod<void>(
+        'setMonoAudio', <dynamic, dynamic>{'enabled': enabled});
+  }
+
+  @override
+  Future<void> setUsbDirectEnabled(bool enabled) {
+    return _mainChannel.invokeMethod<void>(
+        'setUsbDirectEnabled', <dynamic, dynamic>{'enabled': enabled});
+  }
+
+  @override
+  late final Stream<AudioOutputEventMessage> audioOutputEventStream =
+      const EventChannel('com.ryanheise.just_audio.output')
+          .receiveBroadcastStream()
+          .cast<Map<dynamic, dynamic>>()
+          .map(AudioOutputEventMessage.fromMap);
 }
 
 /// An implementation of [AudioPlayerPlatform] that uses method channels.

@@ -16,7 +16,21 @@ import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
 
 export 'package:just_audio_platform_interface/just_audio_platform_interface.dart'
-    show AudioTrack, TextTrack;
+    show
+        AudioTrack,
+        TextTrack,
+        ParametricEqualizerMessage,
+        ParametricEqualizerBandMessage,
+        ParametricEqualizerBandTypeMessage,
+        ParametricEqualizerChannelMessage,
+        AudioOutputEventMessage,
+        AudioOutputDeviceMessage,
+        BitPerfectStatusMessage,
+        BitPerfectReasonMessage,
+        UsbDirectStatusMessage,
+        UsbDirectStateMessage,
+        AudioSignalPathMessage,
+        AudioSignalPathOutputMessage;
 
 typedef VideoInfoData = VideoDataMessage;
 
@@ -4378,4 +4392,31 @@ extension _FutureIterabletUtils on Iterable<Future<void> Function()?> {
       }
     }
   }
+}
+
+/// Android only: output device routing, bit-perfect playback and the parametric equalizer, shared by every player.
+class AndroidAudioOutput {
+  const AndroidAudioOutput._();
+
+  static Future<void> setParametricEqualizer(
+          ParametricEqualizerMessage message) =>
+      _pluginPlatform.setParametricEqualizer(message);
+
+  static Future<AudioOutputEventMessage> getState() =>
+      _pluginPlatform.getAudioOutputState();
+
+  static Future<void> setPreferredDevice(int? deviceId) =>
+      _pluginPlatform.setPreferredAudioOutputDevice(deviceId);
+
+  static Future<void> setBitPerfectEnabled(bool enabled) =>
+      _pluginPlatform.setBitPerfectEnabled(enabled);
+
+  static Future<void> setUsbDirectEnabled(bool enabled) =>
+      _pluginPlatform.setUsbDirectEnabled(enabled);
+
+  static Future<void> setMonoAudio(bool enabled) =>
+      _pluginPlatform.setMonoAudio(enabled);
+
+  static Stream<AudioOutputEventMessage> get events =>
+      _pluginPlatform.audioOutputEventStream;
 }

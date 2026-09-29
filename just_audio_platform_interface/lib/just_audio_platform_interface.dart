@@ -54,6 +54,45 @@ abstract class JustAudioPlatform extends PlatformInterface {
       DisposeAllPlayersRequest request) {
     throw UnimplementedError('disposeAllPlayers() has not been implemented.');
   }
+
+  /// Applies a parametric equalizer to every player.
+  Future<void> setParametricEqualizer(ParametricEqualizerMessage message) {
+    throw UnimplementedError(
+        'setParametricEqualizer() has not been implemented.');
+  }
+
+  /// The output devices, the preferred one and the bit-perfect status.
+  Future<AudioOutputEventMessage> getAudioOutputState() {
+    throw UnimplementedError('getAudioOutputState() has not been implemented.');
+  }
+
+  /// Routes every player to [deviceId], or to the system choice when null.
+  Future<void> setPreferredAudioOutputDevice(int? deviceId) {
+    throw UnimplementedError(
+        'setPreferredAudioOutputDevice() has not been implemented.');
+  }
+
+  /// Sends unprocessed PCM to bit-perfect capable devices, bypassing all audio processing.
+  Future<void> setBitPerfectEnabled(bool enabled) {
+    throw UnimplementedError(
+        'setBitPerfectEnabled() has not been implemented.');
+  }
+
+  /// Mixes every channel down to mono, for all players.
+  Future<void> setMonoAudio(bool enabled) {
+    throw UnimplementedError('setMonoAudio() has not been implemented.');
+  }
+
+  /// Drives a connected USB DAC directly, bypassing Android's audio stack.
+  Future<void> setUsbDirectEnabled(bool enabled) {
+    throw UnimplementedError('setUsbDirectEnabled() has not been implemented.');
+  }
+
+  /// Output changes, devices are only included when they changed.
+  Stream<AudioOutputEventMessage> get audioOutputEventStream {
+    throw UnimplementedError(
+        'audioOutputEventStream has not been implemented.');
+  }
 }
 
 /// A nested platform interface for communicating with a particular player
@@ -1731,4 +1770,336 @@ class AndroidEqualizerMessage extends AudioEffectMessage {
         'enabled': enabled,
         'parameters': parameters?.toMap(),
       };
+}
+
+/// A parametric equalizer applied to every player, after speed and pitch.
+class ParametricEqualizerMessage {
+  final bool enabled;
+  final double preamp;
+  final bool limiter;
+  final List<ParametricEqualizerBandMessage> bands;
+
+  const ParametricEqualizerMessage({
+    required this.enabled,
+    required this.preamp,
+    required this.limiter,
+    required this.bands,
+  });
+
+  Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
+        'enabled': enabled,
+        'preamp': preamp,
+        'limiter': limiter,
+        'bands': bands.map((band) => band.toMap()).toList(),
+      };
+}
+
+/// One band of a [ParametricEqualizerMessage], [id] must stay the same while the band is edited.
+class ParametricEqualizerBandMessage {
+  final int id;
+  final ParametricEqualizerBandTypeMessage type;
+  final double frequency;
+  final double gain;
+  final double q;
+
+  /// 2, 4, 6 or 8, only used by low and high passes.
+  final int order;
+  final ParametricEqualizerChannelMessage channel;
+
+  const ParametricEqualizerBandMessage({
+    required this.id,
+    required this.type,
+    required this.frequency,
+    required this.gain,
+    required this.q,
+    required this.order,
+    required this.channel,
+  });
+
+  Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
+        'id': id,
+        'type': type.index,
+        'frequency': frequency,
+        'gain': gain,
+        'q': q,
+        'order': order,
+        'channel': channel.index,
+      };
+}
+
+enum ParametricEqualizerBandTypeMessage {
+  peak,
+  lowShelf,
+  highShelf,
+  lowPass,
+  highPass,
+  bandPass,
+  notch,
+  allPass
+}
+
+enum ParametricEqualizerChannelMessage { all, left, right }
+
+/// A change of the output devices or of the bit-perfect status.
+class AudioOutputEventMessage {
+  /// null when the event didn't include devices.
+  final List<AudioOutputDeviceMessage>? devices;
+  final int? preferredDeviceId;
+  final BitPerfectStatusMessage bitPerfect;
+  final UsbDirectStatusMessage usbDirect;
+  final AudioSignalPathMessage signalPath;
+
+  const AudioOutputEventMessage({
+    required this.devices,
+    required this.preferredDeviceId,
+    required this.bitPerfect,
+    required this.usbDirect,
+    required this.signalPath,
+  });
+
+  static AudioOutputEventMessage fromMap(Map<dynamic, dynamic> map) =>
+      AudioOutputEventMessage(
+        devices: (map['devices'] as List<dynamic>?)
+            ?.map((e) =>
+                AudioOutputDeviceMessage.fromMap(e as Map<dynamic, dynamic>))
+            .toList(),
+        preferredDeviceId: map['preferredDeviceId'] as int?,
+        bitPerfect: BitPerfectStatusMessage.fromMap(
+            map['bitPerfect'] as Map<dynamic, dynamic>),
+        usbDirect: UsbDirectStatusMessage.fromMap(
+            map['usbDirect'] as Map<dynamic, dynamic>),
+        signalPath: AudioSignalPathMessage.fromMap(
+            map['signalPath'] as Map<dynamic, dynamic>),
+      );
+}
+
+class AudioOutputDeviceMessage {
+  final int id;
+
+  /// an Android `AudioDeviceInfo.TYPE_*` value.
+  final int type;
+  final String? name;
+  final String? address;
+  final bool isRouted;
+  final bool bitPerfect;
+  final int maxSampleRate;
+  final int maxBitDepth;
+
+  /// the DAC claimed by USB direct, it plays everything while claimed.
+  final bool isUsbDirect;
+
+  const AudioOutputDeviceMessage({
+    required this.id,
+    required this.type,
+    required this.name,
+    required this.address,
+    required this.isRouted,
+    required this.bitPerfect,
+    required this.maxSampleRate,
+    required this.maxBitDepth,
+    required this.isUsbDirect,
+  });
+
+  static AudioOutputDeviceMessage fromMap(Map<dynamic, dynamic> map) =>
+      AudioOutputDeviceMessage(
+        id: map['id'] as int,
+        type: map['type'] as int,
+        name: map['name'] as String?,
+        address: map['address'] as String?,
+        isRouted: map['isRouted'] as bool,
+        bitPerfect: map['bitPerfect'] as bool,
+        maxSampleRate: map['maxSampleRate'] as int,
+        maxBitDepth: map['maxBitDepth'] as int,
+        isUsbDirect: map['usbDirect'] == true,
+      );
+}
+
+enum BitPerfectReasonMessage {
+  active,
+  disabled,
+  unsupportedAndroid,
+  noDevice,
+  unsupportedFormat;
+
+  static BitPerfectReasonMessage fromName(String name) => switch (name) {
+        'active' => active,
+        'unsupported_android' => unsupportedAndroid,
+        'no_device' => noDevice,
+        'unsupported_format' => unsupportedFormat,
+        _ => disabled,
+      };
+}
+
+class BitPerfectStatusMessage {
+  /// whether this Android version has a bit-perfect mixer.
+  final bool supported;
+  final BitPerfectReasonMessage reason;
+  final int? deviceId;
+  final String? deviceName;
+  final int sampleRate;
+  final int bitDepth;
+
+  const BitPerfectStatusMessage({
+    required this.supported,
+    required this.reason,
+    required this.deviceId,
+    required this.deviceName,
+    required this.sampleRate,
+    required this.bitDepth,
+  });
+
+  bool get isActive => reason == BitPerfectReasonMessage.active;
+
+  static BitPerfectStatusMessage fromMap(Map<dynamic, dynamic> map) =>
+      BitPerfectStatusMessage(
+        supported: map['supported'] as bool,
+        reason: BitPerfectReasonMessage.fromName(map['reason'] as String),
+        deviceId: map['deviceId'] as int?,
+        deviceName: map['deviceName'] as String?,
+        sampleRate: map['sampleRate'] as int,
+        bitDepth: map['bitDepth'] as int,
+      );
+}
+
+enum AudioSignalPathOutputMessage {
+  androidMixer,
+  bitPerfectMixer,
+  usbDirect;
+
+  static AudioSignalPathOutputMessage? fromName(String? name) => switch (name) {
+        'android_mixer' => androidMixer,
+        'bit_perfect_mixer' => bitPerfectMixer,
+        'usb_direct' => usbDirect,
+        _ => null,
+      };
+}
+
+/// What the last configured player feeds through, 0 marks unknown values.
+class AudioSignalPathMessage {
+  final String? sourceMime;
+  final int sourceSampleRate;
+  final int sourceChannels;
+  final int sourceBitDepth;
+  final int sourceBitrate;
+  final String? decoderName;
+  final int decodedSampleRate;
+  final int decodedChannels;
+  final int decodedBitDepth;
+  final bool isDecodedFloat;
+  final bool isBitPerfect;
+  final AudioSignalPathOutputMessage? output;
+  final String? outputDeviceName;
+  final int outputSampleRate;
+  final int outputChannels;
+  final int outputBitDepth;
+  final bool isOutputFloat;
+  final bool isOutputDithered;
+  final bool hasOutputHardwareVolume;
+
+  /// Android's own output rate when its mixer plays the stream.
+  final int mixerSampleRate;
+
+  const AudioSignalPathMessage({
+    required this.sourceMime,
+    required this.sourceSampleRate,
+    required this.sourceChannels,
+    required this.sourceBitDepth,
+    required this.sourceBitrate,
+    required this.decoderName,
+    required this.decodedSampleRate,
+    required this.decodedChannels,
+    required this.decodedBitDepth,
+    required this.isDecodedFloat,
+    required this.isBitPerfect,
+    required this.output,
+    required this.outputDeviceName,
+    required this.outputSampleRate,
+    required this.outputChannels,
+    required this.outputBitDepth,
+    required this.isOutputFloat,
+    required this.isOutputDithered,
+    required this.hasOutputHardwareVolume,
+    required this.mixerSampleRate,
+  });
+
+  static AudioSignalPathMessage fromMap(Map<dynamic, dynamic> map) =>
+      AudioSignalPathMessage(
+        sourceMime: map['sourceMime'] as String?,
+        sourceSampleRate: map['sourceSampleRate'] as int,
+        sourceChannels: map['sourceChannels'] as int,
+        sourceBitDepth: map['sourceBitDepth'] as int,
+        sourceBitrate: map['sourceBitrate'] as int,
+        decoderName: map['decoderName'] as String?,
+        decodedSampleRate: map['decodedSampleRate'] as int,
+        decodedChannels: map['decodedChannels'] as int,
+        decodedBitDepth: map['decodedBitDepth'] as int,
+        isDecodedFloat: map['decodedFloat'] as bool,
+        isBitPerfect: map['bitPerfect'] as bool,
+        output: AudioSignalPathOutputMessage.fromName(map['output'] as String?),
+        outputDeviceName: map['outputDeviceName'] as String?,
+        outputSampleRate: map['outputSampleRate'] as int,
+        outputChannels: map['outputChannels'] as int,
+        outputBitDepth: map['outputBitDepth'] as int,
+        isOutputFloat: map['outputFloat'] as bool,
+        isOutputDithered: map['outputDithered'] as bool,
+        hasOutputHardwareVolume: map['outputHardwareVolume'] as bool,
+        mixerSampleRate: map['mixerSampleRate'] as int,
+      );
+}
+
+enum UsbDirectStateMessage {
+  off,
+  noDevice,
+  awaitingPermission,
+  permissionDenied,
+  unsupportedDevice,
+  failed,
+  active;
+
+  static UsbDirectStateMessage fromName(String name) => switch (name) {
+        'no_device' => noDevice,
+        'awaiting_permission' => awaitingPermission,
+        'permission_denied' => permissionDenied,
+        'unsupported_device' => unsupportedDevice,
+        'failed' => failed,
+        'active' => active,
+        _ => off,
+      };
+}
+
+class UsbDirectStatusMessage {
+  final UsbDirectStateMessage state;
+  final String? deviceName;
+  final int maxSampleRate;
+  final int maxBitDepth;
+
+  /// the DAC's own volume control keeps bit-perfect streams untouched.
+  final bool hasHardwareVolume;
+
+  /// the stream currently sent to the DAC, 0 while none.
+  final int sampleRate;
+  final int bitDepth;
+
+  const UsbDirectStatusMessage({
+    required this.state,
+    required this.deviceName,
+    required this.maxSampleRate,
+    required this.maxBitDepth,
+    required this.hasHardwareVolume,
+    required this.sampleRate,
+    required this.bitDepth,
+  });
+
+  bool get isActive => state == UsbDirectStateMessage.active;
+
+  static UsbDirectStatusMessage fromMap(Map<dynamic, dynamic> map) =>
+      UsbDirectStatusMessage(
+        state: UsbDirectStateMessage.fromName(map['state'] as String),
+        deviceName: map['deviceName'] as String?,
+        maxSampleRate: map['maxSampleRate'] as int,
+        maxBitDepth: map['maxBitDepth'] as int,
+        hasHardwareVolume: map['hardwareVolume'] as bool,
+        sampleRate: map['sampleRate'] as int,
+        bitDepth: map['bitDepth'] as int,
+      );
 }

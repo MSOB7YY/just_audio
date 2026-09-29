@@ -21,7 +21,8 @@ rootProject.allprojects {
           url = project(':just_audio').file('repo')
         }
         // -- our media3 build keeps the upstream version, so google() would win by repository order
-        // -- and we would silently lose our patches (ogg improvements live in media3-extractor).
+        // -- and we would silently lose our patches (ogg improvements live in media3-extractor,
+        // -- float processing and bit-perfect output live in media3-exoplayer).
         exclusiveContent {
             forRepository {
                 maven {
@@ -31,6 +32,7 @@ rootProject.allprojects {
             }
             filter {
                 includeModule('androidx.media3', 'media3-extractor')
+                includeModule('androidx.media3', 'media3-exoplayer')
             }
         }
     }
@@ -54,15 +56,22 @@ android {
     if (project.android.hasProperty("namespace")) {
         namespace 'com.ryanheise.just_audio'
     }
-    compileSdkVersion 33
+    compileSdkVersion 36
 
     defaultConfig {
-        minSdkVersion 16
+        minSdkVersion 21
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     lintOptions {
         disable 'InvalidPackage'
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
+        }
     }
 
     compileOptions {

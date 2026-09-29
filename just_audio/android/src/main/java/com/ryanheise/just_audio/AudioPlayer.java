@@ -3,6 +3,7 @@ package com.ryanheise.just_audio;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
+import android.media.AudioDeviceInfo;
 import android.media.audiofx.AudioEffect;
 import android.media.audiofx.BassBoost;
 import android.media.audiofx.Equalizer;
@@ -14,6 +15,7 @@ import android.os.Looper;
 import android.view.Surface;
 import android.util.Rational;
 
+import androidx.annotation.Nullable;
 import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
@@ -29,8 +31,6 @@ import androidx.media3.common.Tracks;
 import androidx.media3.common.text.CueGroup;
 import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.TrackSelectionParameters;
-import androidx.media3.common.audio.AudioProcessor;
-import androidx.media3.common.audio.SonicAudioProcessor;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
 import androidx.media3.datasource.DataSource;
@@ -39,6 +39,8 @@ import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.decoder.ffmpeg.ExperimentalFfmpegVideoRenderer;
+import androidx.media3.decoder.flac.LibflacAudioRenderer;
+import androidx.media3.exoplayer.DecoderReuseEvaluation;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.NoSampleRenderer;
 import androidx.media3.exoplayer.Renderer;
@@ -50,7 +52,10 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.LivePlaybackSpeedControl;
 import androidx.media3.exoplayer.LoadControl;
 import androidx.media3.exoplayer.RenderersFactory;
+import androidx.media3.exoplayer.analytics.AnalyticsListener;
+import androidx.media3.exoplayer.audio.AudioRendererEventListener;
 import androidx.media3.exoplayer.audio.AudioSink;
+import androidx.media3.exoplayer.audio.AudioTrackAudioOutputProvider;
 import androidx.media3.exoplayer.audio.DefaultAudioSink;
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor;
 import androidx.media3.exoplayer.dash.DashMediaSource;
@@ -95,6 +100,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private static Random random = new Random();
 
   private final Context context;
+  private final AudioOutputManager outputManager;
   private final MethodChannel methodChannel;
   private final BetterEventChannel eventChannel;
   private final BetterEventChannel dataEventChannel;
@@ -204,6 +210,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       Map<?, ?> audioLoadConfiguration, List<Object> rawAudioEffects,
       boolean preferSWDecoders, TextureRegistry textureRegistry) {
     this.context = applicationContext;
+    this.outputManager = AudioOutputManager.get(applicationContext);
     this.rawAudioEffects = rawAudioEffects;
     try {
       this.surfaceTextureEntry = textureRegistry.createSurfaceTexture();
@@ -1331,6 +1338,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                     : DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER;
 
       final boolean softwareTier = rendererTier == RendererTier.SW;
+      final boolean bitPerfect = outputManager.isBitPerfectEnabled();
       RenderersFactory renderersFactory = new DefaultRenderersFactory(context) {
         // -- ffmpeg is the only real software video path (MediaCodec software decoders are 8-bit only).
         // -- HW tier: last resort behind MediaCodec, SW tier: first choice.
@@ -1366,19 +1374,33 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
           out.add(new PositionObserverRenderer());
         }
 
+        // -- libflac outputs the file's own bit depth, MediaCodec would hand bit-perfect a 16-bit or float stream.
+        @Override
+        protected void buildAudioRenderers(Context context, int extensionRendererMode, MediaCodecSelector mediaCodecSelector,
+            boolean enableDecoderFallback, AudioSink audioSink, Handler eventHandler, AudioRendererEventListener eventListener,
+            ArrayList<Renderer> out) {
+          super.buildAudioRenderers(context, extensionRendererMode, mediaCodecSelector, enableDecoderFallback, audioSink,
+              eventHandler, eventListener, out);
+          if (!bitPerfect) return;
+          for (int i = 0; i < out.size(); i++) {
+            if (out.get(i) instanceof LibflacAudioRenderer) {
+              out.add(0, out.remove(i));
+              break;
+            }
+          }
+        }
+
         @Override
         protected AudioSink buildAudioSink(Context context, boolean enableFloatOutput,
-            boolean enableAudioTrackPlaybackParams) {
+            boolean enableAudioOutputPlaybackParams) {
           return new DefaultAudioSink.Builder(context)
-              .setAudioProcessorChain(new DefaultAudioSink.DefaultAudioProcessorChain(new AudioProcessor[0], // silence
-                  // and
-                  // sonic
-                  // processor
-                  // only
+              .setAudioProcessorChain(new PlaybackAudioProcessorChain(
                   new SilenceSkippingAudioProcessor(minSilenceDur, paddingSilenceDur, silenceThresholdPCM),
-                  new SonicAudioProcessor()))
-              .setEnableFloatOutput(enableFloatOutput).setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-
+                  new UsbRateConverterAudioProcessor(outputManager::getUsbTargetSampleRate)))
+              .setEnableFloatOutput(true)
+              .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
+              .setAudioOutputProvider(new BitPerfectAudioOutputProvider(
+                  new AudioTrackAudioOutputProvider.Builder(context).build(), outputManager))
               .build();
         }
       }.setExtensionRendererMode(rendererMode)
@@ -1394,12 +1416,52 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
           .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
           .build()
       );
+      player.setPreferredAudioDevice(outputManager.getPreferredDevice());
       setAudioSessionId(player.getAudioSessionId());
       if (surface != null) {
         player.setVideoSurface(surface);
       }
       player.addListener(this);
+      player.addAnalyticsListener(signalPathListener);
     }
+  }
+
+  private final AnalyticsListener signalPathListener = new AnalyticsListener() {
+    @Override
+    public void onAudioInputFormatChanged(EventTime eventTime, Format format, @Nullable DecoderReuseEvaluation decoderReuseEvaluation) {
+      outputManager.onSourceFormat(format);
+    }
+
+    @Override
+    public void onAudioDecoderInitialized(EventTime eventTime, String decoderName, long initializedTimestampMs, long initializationDurationMs) {
+      outputManager.onDecoderInitialized(decoderName);
+    }
+  };
+
+  void setPreferredAudioDevice(AudioDeviceInfo device) {
+    if (player != null) player.setPreferredAudioDevice(device);
+  }
+
+  /// the sink picks bit-perfect or processed output when it configures a stream, re-preparing
+  /// re-runs that choice after the output device changed.
+  void reloadForAudioOutput() {
+    if (player == null || mediaSource == null || processingState == ProcessingState.none) return;
+    final int windowIndex = player.getCurrentMediaItemIndex();
+    final long position = Math.max(0, player.getCurrentPosition());
+    player.setMediaSource(mediaSource);
+    player.seekTo(windowIndex, position);
+    player.prepare();
+  }
+
+  void pauseForAudioOutput() {
+    if (player == null) return;
+    pause();
+  }
+
+  /// bit-perfect also changes the renderers order, which needs a new player.
+  void rebuildForAudioOutput() {
+    if (player == null) return;
+    rebuildPlayer();
   }
 
   private void setAudioAttributes(int contentType, int flags, int usage) {
@@ -1733,10 +1795,16 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     if (nextTier == null || nextTier == rendererTier) {
       return;
     }
+    if (this.mediaSource == null) return;
 
+    didFallbackForItem = true;
+    rendererTier = nextTier;
+    rebuildPlayer();
+  }
+
+  private void rebuildPlayer() {
     // -- restoring the media source itself, `MediaItem` would lose custom/merging/concatenating sources.
     final MediaSource sourceToRestore = this.mediaSource;
-    if (sourceToRestore == null) return;
 
     final int windowIndex = player.getCurrentMediaItemIndex();
     final long position = Math.max(0, player.getCurrentPosition());
@@ -1745,9 +1813,6 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     final PlaybackParameters playbackParameters = player.getPlaybackParameters();
     final boolean skipSilenceEnabled = player.getSkipSilenceEnabled();
     final AudioAttributes audioAttributes = player.getAudioAttributes();
-
-    didFallbackForItem = true;
-    rendererTier = nextTier;
 
     player.release();
     player = null;
@@ -1758,9 +1823,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     player.setVolume(volume);
     player.setPlaybackParameters(playbackParameters);
     player.setSkipSilenceEnabled(skipSilenceEnabled);
+    player.setPlayWhenReady(playWhenReady);
+    if (sourceToRestore == null) return;
     player.setMediaSource(sourceToRestore);
     player.seekTo(windowIndex, position);
-    player.setPlayWhenReady(playWhenReady);
     player.prepare();
   }
 

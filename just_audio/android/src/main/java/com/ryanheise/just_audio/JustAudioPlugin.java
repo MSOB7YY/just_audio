@@ -29,6 +29,7 @@ import io.flutter.view.TextureRegistry;
 
     channel = new MethodChannel(messenger, "com.ryanheise.just_audio.methods");
     channel.setMethodCallHandler(methodCallHandler);
+    AudioOutputManager.get(binding.getApplicationContext()).attach(messenger);
     @SuppressWarnings("deprecation")
     FlutterEngine engine = binding.getFlutterEngine();
     engine.addEngineLifecycleListener(new EngineLifecycleListener() {
@@ -46,6 +47,7 @@ import io.flutter.view.TextureRegistry;
   public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
     methodCallHandler.dispose();
     methodCallHandler = null;
+    AudioOutputManager.get(binding.getApplicationContext()).detach(binding.getBinaryMessenger());
 
     channel.setMethodCallHandler(null);
   }

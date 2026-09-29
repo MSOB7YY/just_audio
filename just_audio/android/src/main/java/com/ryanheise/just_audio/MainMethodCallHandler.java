@@ -13,6 +13,7 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 import io.flutter.view.TextureRegistry;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.ArrayList;
@@ -26,6 +27,10 @@ public class MainMethodCallHandler implements MethodCallHandler {
 
   static private final Map<String, AudioPlayer> players = new HashMap<>();
   static private String latestId;
+
+  static Collection<AudioPlayer> allPlayers() {
+    return players.values();
+  }
 
   static public AudioPlayer latestAudioPlayer() {
     return latestId == null ? null : players.get(latestId);
@@ -103,6 +108,7 @@ public class MainMethodCallHandler implements MethodCallHandler {
           if (latestId.equals(id))
             latestId = null;
         }
+        outputManager().releaseIfUnused();
         result.success(new HashMap<String, Object>());
         break;
       }
@@ -113,12 +119,46 @@ public class MainMethodCallHandler implements MethodCallHandler {
         AudioPlayer.mediaSources.clear();
         AudioPlayer.videoSources.clear();
         players.clear();
+        outputManager().releaseIfUnused();
+        break;
+      }
+      case "setParametricEqualizer": {
+        ParametricEqualizer.set(call.arguments());
+        result.success(null);
+        break;
+      }
+      case "setMonoAudio": {
+        ParametricEqualizer.setMono(Boolean.TRUE.equals(call.argument("enabled")));
+        result.success(null);
+        break;
+      }
+      case "getAudioOutputState": {
+        result.success(outputManager().getState());
+        break;
+      }
+      case "setPreferredAudioOutputDevice": {
+        outputManager().setPreferredDevice(call.argument("deviceId"));
+        result.success(null);
+        break;
+      }
+      case "setBitPerfectEnabled": {
+        outputManager().setBitPerfectEnabled(Boolean.TRUE.equals(call.argument("enabled")));
+        result.success(null);
+        break;
+      }
+      case "setUsbDirectEnabled": {
+        outputManager().setUsbDirectEnabled(Boolean.TRUE.equals(call.argument("enabled")));
+        result.success(null);
         break;
       }
       default:
         result.notImplemented();
         break;
     }
+  }
+
+  private AudioOutputManager outputManager() {
+    return AudioOutputManager.get(binding.getApplicationContext());
   }
 
   void dispose() {
