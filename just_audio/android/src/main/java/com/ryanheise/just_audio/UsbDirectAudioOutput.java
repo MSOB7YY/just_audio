@@ -60,7 +60,7 @@ final class UsbDirectAudioOutput implements AudioOutput {
     @Nullable final UsbAudioStream stream = UsbAudioStream.create(fileDescriptor, format, device.isHighSpeed, config.sampleRate, isFloat, channels,
         bytesPerSample);
     if (stream == null) {
-      device.releaseStream();
+      device.releaseStream(null);
       return null;
     }
     return new UsbDirectAudioOutput(manager, device, stream, format, config, isFloat);
@@ -114,18 +114,13 @@ final class UsbDirectAudioOutput implements AudioOutput {
   @Override
   public void release() {
     stream.release();
-    device.releaseStream();
+    device.releaseStream(stream);
     for (Listener listener : listeners) listener.onReleased();
   }
 
-  /// the dac's own volume keeps samples untouched, without one processed audio is scaled before dithering and bit-perfect stays fixed.
   @Override
   public void setVolume(float volume) {
-    if (device.hasHardwareVolume()) {
-      device.setVolume(volume);
-    } else if (isFloat) {
-      stream.setGain(volume);
-    }
+    device.setVolume(stream, volume, isFloat);
   }
 
   @Override

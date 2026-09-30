@@ -2,6 +2,7 @@
 package com.ryanheise.just_audio;
 
 import android.content.Context;
+import android.content.Intent;
 import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
@@ -34,6 +35,7 @@ import java.util.Map;
 final class AudioOutputManager {
 
   private static final String REASON_ACTIVE = "active";
+  private static final String REASON_READY = "ready";
   private static final String REASON_DISABLED = "disabled";
   private static final String REASON_UNSUPPORTED_ANDROID = "unsupported_android";
   private static final String REASON_NO_DEVICE = "no_device";
@@ -51,6 +53,7 @@ final class AudioOutputManager {
   private final AudioManager audioManager;
   private final Handler handler = new Handler(Looper.getMainLooper());
   private final UsbDirectManager usbDirect;
+  private final SystemVolumeFollower systemVolume;
   private final AudioSignalPath signalPath = new AudioSignalPath();
   private int mixerSampleRate;
   private final android.media.AudioAttributes mediaAttributes =
@@ -75,6 +78,7 @@ final class AudioOutputManager {
   private AudioOutputManager(Context context) {
     audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
     usbDirect = new UsbDirectManager(context, handler, this::onUsbDirectChanged);
+    systemVolume = new SystemVolumeFollower(context, audioManager, handler);
     audioManager.registerAudioDeviceCallback(new AudioDeviceCallback() {
       @Override
       public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
@@ -118,6 +122,10 @@ final class AudioOutputManager {
     usbDirect.setEnabled(enabled);
   }
 
+  void onUsbDeviceHandedOver(Intent intent) {
+    usbDirect.onHandedOver(intent);
+  }
+
   int getUsbTargetSampleRate(int sampleRate, int channels) {
     @Nullable final UsbAudioDevice device = usbDirect.getDevice();
     if (device == null) return sampleRate;
@@ -132,18 +140,21 @@ final class AudioOutputManager {
     for (AudioPlayer player : MainMethodCallHandler.allPlayers()) {
       player.setPreferredAudioDevice(device);
     }
-    if (bitPerfectEnabled) reloadPlayers();
+    if (bitPerfectEnabled) {
+      synchronized (this) {
+        refreshIdleStatusLocked();
+      }
+      reloadPlayers();
+    }
     broadcast(true);
   }
 
   void setBitPerfectEnabled(boolean enabled) {
     if (enabled == bitPerfectEnabled) return;
     bitPerfectEnabled = enabled;
-    if (!enabled) {
-      synchronized (this) {
-        clearAppliedMixerAttributes();
-        status = statusOf(REASON_DISABLED, null, 0, 0);
-      }
+    synchronized (this) {
+      if (!enabled) clearAppliedMixerAttributes();
+      refreshIdleStatusLocked();
     }
     for (AudioPlayer player : MainMethodCallHandler.allPlayers()) {
       player.rebuildForAudioOutput();
@@ -318,6 +329,41 @@ final class AudioOutputManager {
     return appliedFormat != null;
   }
 
+  /// what bit-perfect can do on the current output before anything plays, an output in use keeps reporting its own stream.
+  private void refreshIdleStatusLocked() {
+    if (!bitPerfectEnabled) {
+      status = statusOf(REASON_DISABLED, null, 0, 0);
+      return;
+    }
+    @Nullable final UsbAudioDevice usbDevice = usbDirect.getDevice();
+    if (usbDevice != null) {
+      if (!usbDevice.hasOpenStreams()) {
+        final int maxSampleRate = usbDevice.getMaxSampleRate();
+        final int maxBitDepth = usbDevice.getMaxBitDepth();
+        status = statusOf(REASON_READY, USB_DIRECT_DEVICE_ID, usbDevice.name, maxSampleRate, maxBitDepth);
+      }
+      return;
+    }
+    if (Build.VERSION.SDK_INT < 34) {
+      status = statusOf(REASON_UNSUPPORTED_ANDROID, null, 0, 0);
+      return;
+    }
+    @Nullable final AudioDeviceInfo device = getTargetDevice();
+    final List<BitPerfectFormat> formats = device == null ? Collections.emptyList() : getBitPerfectFormats(device);
+    if (device == null || formats.isEmpty()) {
+      status = statusOf(REASON_NO_DEVICE, device, 0, 0);
+      return;
+    }
+    if (appliedFormat != null && appliedDevice != null && appliedDevice.getId() == device.getId()) return;
+    int maxSampleRate = 0;
+    int maxBitDepth = 0;
+    for (BitPerfectFormat format : formats) {
+      maxSampleRate = Math.max(maxSampleRate, format.sampleRate);
+      maxBitDepth = Math.max(maxBitDepth, bitDepthOf(format.encoding));
+    }
+    status = statusOf(REASON_READY, device, maxSampleRate, maxBitDepth);
+  }
+
   /// android's primary output rate, what its mixer resamples everything to.
   private int getMixerSampleRate() {
     if (mixerSampleRate == 0) {
@@ -345,14 +391,13 @@ final class AudioOutputManager {
   /// a released dac pauses like unplugged headphones would, the players would otherwise carry on out of the phone's speaker.
   private void onUsbDirectChanged(boolean didClaimChange) {
     if (didClaimChange) {
-      final boolean isClaimed = usbDirect.getDevice() != null;
-      if (!isClaimed) {
-        synchronized (this) {
-          status = statusOf(bitPerfectEnabled ? REASON_NO_DEVICE : REASON_DISABLED, null, 0, 0);
-        }
+      @Nullable final UsbAudioDevice usbDevice = usbDirect.getDevice();
+      systemVolume.follow(usbDevice);
+      synchronized (this) {
+        refreshIdleStatusLocked();
       }
       for (AudioPlayer player : MainMethodCallHandler.allPlayers()) {
-        if (!isClaimed) player.pauseForAudioOutput();
+        if (usbDevice == null) player.pauseForAudioOutput();
         player.reloadForAudioOutput();
       }
     }
@@ -389,7 +434,12 @@ final class AudioOutputManager {
         }
       }
     }
-    if (bitPerfectEnabled && affectsBitPerfect && usbDirect.getDevice() == null) reloadPlayers();
+    if (bitPerfectEnabled && affectsBitPerfect) {
+      synchronized (this) {
+        refreshIdleStatusLocked();
+      }
+      if (usbDirect.getDevice() == null) reloadPlayers();
+    }
     broadcast(true);
   }
 

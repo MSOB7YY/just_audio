@@ -1916,6 +1916,9 @@ class AudioOutputDeviceMessage {
 
 enum BitPerfectReasonMessage {
   active,
+
+  /// the output can play untouched, nothing plays yet.
+  ready,
   disabled,
   unsupportedAndroid,
   noDevice,
@@ -1923,6 +1926,7 @@ enum BitPerfectReasonMessage {
 
   static BitPerfectReasonMessage fromName(String name) => switch (name) {
         'active' => active,
+        'ready' => ready,
         'unsupported_android' => unsupportedAndroid,
         'no_device' => noDevice,
         'unsupported_format' => unsupportedFormat,

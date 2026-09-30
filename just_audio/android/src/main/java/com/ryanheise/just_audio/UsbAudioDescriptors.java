@@ -80,12 +80,13 @@ final class UsbAudioDescriptors {
     final int syncType;
     final int feedbackEndpoint;
     final int feedbackInterval;
+    final int feedbackMaxPacketBytes;
     final boolean hasSampleRateControl;
     final int clockSourceId;
 
     Format(int interfaceNumber, int altSetting, int channels, int subslotBytes, int bitResolution, int[] discreteRates, int minRate,
         int maxRate, int endpoint, int maxPacketBytes, int interval, int syncType, int feedbackEndpoint, int feedbackInterval,
-        boolean hasSampleRateControl, int clockSourceId) {
+        int feedbackMaxPacketBytes, boolean hasSampleRateControl, int clockSourceId) {
       this.interfaceNumber = interfaceNumber;
       this.altSetting = altSetting;
       this.channels = channels;
@@ -100,6 +101,7 @@ final class UsbAudioDescriptors {
       this.syncType = syncType;
       this.feedbackEndpoint = feedbackEndpoint;
       this.feedbackInterval = feedbackInterval;
+      this.feedbackMaxPacketBytes = feedbackMaxPacketBytes;
       this.hasSampleRateControl = hasSampleRateControl;
       this.clockSourceId = clockSourceId;
     }
@@ -345,6 +347,7 @@ final class UsbAudioDescriptors {
       } else if (usage == 0x1 || address == current.feedbackEndpoint) {
         current.feedbackEndpoint = address;
         current.feedbackInterval = uacVersion == 1 && length >= 8 ? u8(i + 7) : interval;
+        current.feedbackMaxPacketBytes = maxPacketBytes;
       }
     }
 
@@ -362,7 +365,7 @@ final class UsbAudioDescriptors {
         final int clock = uacVersion == 2 ? resolveClockSource(terminalClocks.containsKey(p.terminalLink) ? terminalClocks.get(p.terminalLink) : -1, 0) : -1;
         formats.add(new Format(p.interfaceNumber, p.altSetting, p.channels, p.subslotBytes, p.bitResolution, p.discreteRates, p.minRate,
             p.maxRate, p.endpoint, p.maxPacketBytes, p.interval, p.syncType, p.feedbackEndpoint, p.feedbackInterval,
-            p.hasSampleRateControl, clock));
+            p.feedbackMaxPacketBytes, p.hasSampleRateControl, clock));
       }
       return new UsbAudioDescriptors(uacVersion, controlInterface, formats, findVolumeControl());
     }
@@ -447,6 +450,7 @@ final class UsbAudioDescriptors {
     int syncType;
     int feedbackEndpoint = -1;
     int feedbackInterval;
+    int feedbackMaxPacketBytes;
     boolean hasSampleRateControl;
 
     Pending(int interfaceNumber, int altSetting) {

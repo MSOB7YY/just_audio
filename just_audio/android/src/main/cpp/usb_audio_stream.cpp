@@ -355,7 +355,8 @@ class UsbAudioStream {
           const float surround = readInput(frame + (4 + ch) * c.inputBytesPerSample, c);
           value = (value + 0.7071f * center + 0.7071f * surround) * foldScale;
         }
-        const float dither = nextDither() - nextDither();
+        // -- integer input widened into a bigger container is exact, dither would only add noise to it
+        const float dither = c.inputFloat ? nextDither() - nextDither() : 0.0f;
         int64_t quantized = static_cast<int64_t>(lrintf(value * gain * fullScale + dither));
         if (quantized > maxValue) quantized = maxValue;
         if (quantized < minValue) quantized = minValue;

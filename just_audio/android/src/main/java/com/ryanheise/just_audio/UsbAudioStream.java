@@ -24,7 +24,9 @@ final class UsbAudioStream {
     final int serviceUnitsPerSecond = isHighSpeed ? 8000 : 1000;
     final int intervalShift = isHighSpeed ? Math.max(0, format.interval - 1) : 0;
     final int packetsPerSecond = serviceUnitsPerSecond >> intervalShift;
-    final int feedbackBytes = isHighSpeed ? 4 : 3;
+    // -- the feedback endpoint's own packet size, a bigger request than it takes errors on some controllers
+    final int defaultFeedbackBytes = isHighSpeed ? 4 : 3;
+    final int feedbackBytes = format.feedbackMaxPacketBytes > 0 ? Math.min(4, format.feedbackMaxPacketBytes) : defaultFeedbackBytes;
     final long handle = nativeCreate(fd, format.endpoint, format.feedbackEndpoint, feedbackBytes, packetsPerSecond, sampleRate, inputFloat,
         inputChannels, inputBytesPerSample, format.channels, format.subslotBytes, format.bitResolution, format.maxPacketBytes);
     return handle == 0 ? null : new UsbAudioStream(handle);

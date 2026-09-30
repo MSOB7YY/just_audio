@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.ResolveInfo;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbManager;
 import android.os.Build;
@@ -15,10 +16,14 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /// claims a usb dac for [UsbDirectAudioOutput] while usb direct is on, following permission, plugging and stream failures.
 /// the claimed device is read from playback threads, everything else runs on the main thread.
+///
+/// an app declaring a USB_DEVICE_ATTACHED activity gets plugged dacs handed over by the system, with its own
+/// dialog and the permission already granted ([#onHandedOver]), so a dac plugged in isn't asked for twice.
 final class UsbDirectManager {
 
   private static final String TAG = "UsbDirectManager";
@@ -74,6 +79,18 @@ final class UsbDirectManager {
     this.listener = listener;
   }
 
+  static boolean isDeviceAttachedIntent(Intent intent) {
+    return UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(intent.getAction());
+  }
+
+  /// the app's USB_DEVICE_ATTACHED activity may be toggled at runtime, so it's checked per attach.
+  private boolean isAttachHandledBySystem() {
+    final Intent intent = new Intent(UsbManager.ACTION_USB_DEVICE_ATTACHED);
+    intent.setPackage(context.getPackageName());
+    final List<ResolveInfo> handlers = context.getPackageManager().queryIntentActivities(intent, 0);
+    return !handlers.isEmpty();
+  }
+
   @Nullable
   UsbAudioDevice getDevice() {
     return device;
@@ -121,8 +138,21 @@ final class UsbDirectManager {
     return map;
   }
 
+  /// the activity got the dac from the system, permission included.
+  void onHandedOver(Intent intent) {
+    @Nullable final UsbDevice usbDevice = getUsbDeviceExtra(intent);
+    if (!isEnabled || device != null || usbDevice == null || !UsbAudioDevice.isAudioOutput(usbDevice)) return;
+    final boolean didClaim = claim(usbDevice);
+    listener.onUsbDirectChanged(didClaim);
+  }
+
   private void onAttached(UsbDevice usbDevice) {
     if (device != null || !UsbAudioDevice.isAudioOutput(usbDevice)) return;
+    if (!usbManager.hasPermission(usbDevice) && isAttachHandledBySystem()) {
+      setState(STATE_AWAITING_PERMISSION, UsbAudioDevice.displayNameOf(usbDevice));
+      listener.onUsbDirectChanged(false);
+      return;
+    }
     final boolean didClaim = claim(usbDevice);
     listener.onUsbDirectChanged(didClaim);
   }

@@ -57,6 +57,9 @@ final class UsbAudioDevice {
   private int activeRate;
   private int appliedVolume = Integer.MIN_VALUE;
   private boolean appliedMute;
+  private float playerGain = 1f;
+  private float systemGain = 1f;
+  private final Map<UsbAudioStream, Float> softwareGainStreams = new HashMap<>();
   private int openStreams;
   private boolean isClosing;
 
@@ -232,10 +235,36 @@ final class UsbAudioDevice {
     if (control.hasMute) writeMute(control, appliedMute);
   }
 
-  /// [gain] is linear, applied in the dac's own analog or digital volume, the samples stay untouched.
-  synchronized void setVolume(float gain) {
+  /// the player's volume for [stream], linear. it lands in the dac's own volume when it has one, so the samples stay untouched,
+  /// otherwise it scales [stream]'s float input before dithering ([isFloat]), and integer streams stay fixed.
+  synchronized void setVolume(UsbAudioStream stream, float gain, boolean isFloat) {
+    final float effectiveGain = gain * systemGain;
+    if (volumeRange != null) {
+      playerGain = gain;
+      writeHardwareGain(effectiveGain);
+    } else if (isFloat) {
+      softwareGainStreams.put(stream, gain);
+      stream.setGain(effectiveGain);
+    }
+  }
+
+  /// android's media volume, linear, so the dac follows the volume keys like any other output.
+  synchronized void setSystemGain(float gain) {
+    if (gain == systemGain) return;
+    systemGain = gain;
+    if (volumeRange != null) {
+      writeHardwareGain(playerGain * gain);
+      return;
+    }
+    for (Map.Entry<UsbAudioStream, Float> entry : softwareGainStreams.entrySet()) {
+      final UsbAudioStream stream = entry.getKey();
+      final float streamPlayerGain = entry.getValue();
+      stream.setGain(streamPlayerGain * gain);
+    }
+  }
+
+  private void writeHardwareGain(float gain) {
     final VolumeRange range = volumeRange;
-    if (range == null) return;
     final UsbAudioDescriptors.VolumeControl control = descriptors.volumeControl;
     final double db = gain <= 0f ? Double.NEGATIVE_INFINITY : 20.0 * Math.log10(gain);
     final boolean mute = db * 256.0 <= range.min;
@@ -259,7 +288,12 @@ final class UsbAudioDevice {
     return true;
   }
 
-  synchronized void releaseStream() {
+  synchronized boolean hasOpenStreams() {
+    return openStreams > 0;
+  }
+
+  synchronized void releaseStream(@Nullable UsbAudioStream stream) {
+    if (stream != null) softwareGainStreams.remove(stream);
     openStreams--;
     if (isClosing && openStreams == 0) closeNow();
   }
