@@ -27,7 +27,8 @@
 
 namespace {
 
-constexpr int kUrbCount = 12;
+// -- 128 ms in flight, the streaming thread isn't realtime and app launches can hold it off for a while (#1264)
+constexpr int kUrbCount = 32;
 constexpr int kUrbDurationMs = 4;
 constexpr int kMaxPacketsPerUrb = 32;
 constexpr int kUnderrunUrbs = 2;
@@ -86,10 +87,11 @@ class UsbAudioStream {
   }
 
   bool init() {
-    const int maxFramesPerPacket = static_cast<int>(nominalFramesPerPacket_ * 1.05) + 1;
-    if (maxFramesPerPacket * bytesPerFrame_ > maxPacketBytes_) return false;
+    // -- packets are clamped to what the endpoint takes, like snd-usb-audio does, so a tightly sized endpoint still streams
+    maxFramesPerPacket_ = maxPacketBytes_ / bytesPerFrame_;
+    if (static_cast<int>(std::ceil(nominalFramesPerPacket_)) > maxFramesPerPacket_) return false;
     const size_t urbSize = sizeof(usbdevfs_urb) + packetsPerUrb_ * sizeof(usbdevfs_iso_packet_desc);
-    const size_t bufferSize = static_cast<size_t>(packetsPerUrb_) * maxFramesPerPacket * bytesPerFrame_;
+    const size_t bufferSize = static_cast<size_t>(packetsPerUrb_) * maxFramesPerPacket_ * bytesPerFrame_;
     for (Slot &slot : slots_) {
       slot.urb = static_cast<usbdevfs_urb *>(calloc(1, urbSize));
       slot.buffer = static_cast<uint8_t *>(malloc(bufferSize));
@@ -179,6 +181,7 @@ class UsbAudioStream {
   const int bytesPerFrame_;
   const int maxPacketBytes_;
   const double nominalFramesPerPacket_;
+  int maxFramesPerPacket_ = 0;
   double framesPerPacket_;
   double frameAccumulator_ = 0.0;
   int packetsPerUrb_ = 1;
@@ -237,7 +240,8 @@ class UsbAudioStream {
       int64_t urbFrames = 0;
       for (int p = 0; p < packetsPerUrb_; p++) {
         accumulator += framesPerPacket_;
-        const int frames = static_cast<int>(accumulator);
+        int frames = static_cast<int>(accumulator);
+        if (frames > maxFramesPerPacket_) frames = maxFramesPerPacket_;
         accumulator -= frames;
         packetFrames[p] = frames;
         urbFrames += frames;

@@ -184,8 +184,10 @@ final class UsbAudioDevice {
     int best = 0;
     double bestScore = Double.MAX_VALUE;
     for (Map.Entry<UsbAudioDescriptors.Format, int[]> entry : ratesByFormat.entrySet()) {
-      if (!fitsChannelsProcessed(entry.getKey(), channels)) continue;
+      final UsbAudioDescriptors.Format format = entry.getKey();
+      if (!fitsChannelsProcessed(format, channels)) continue;
       for (int rate : entry.getValue()) {
+        if (!fitsPackets(format, rate)) continue;
         if (rate == sampleRate) return rate;
         final boolean isSameFamily = rate % 11025 == 0 == (sampleRate % 11025 == 0);
         final double score = Math.abs(Math.log((double) rate / sampleRate)) + (isSameFamily ? 0 : 10);
@@ -502,13 +504,20 @@ final class UsbAudioDevice {
     return best;
   }
 
+  /// the dac advertises the rate, and the endpoint's packets are big enough to carry it (#118, 96 kHz on a 48 kHz sized endpoint).
   private boolean supports(UsbAudioDescriptors.Format format, int sampleRate) {
     final int[] rates = ratesByFormat.get(format);
     if (rates == null) return false;
     for (int rate : rates) {
-      if (rate == sampleRate) return true;
+      if (rate == sampleRate) return fitsPackets(format, sampleRate);
     }
     return false;
+  }
+
+  private boolean fitsPackets(UsbAudioDescriptors.Format format, int sampleRate) {
+    final int packetsPerSecond = UsbAudioStream.packetsPerSecond(format, isHighSpeed);
+    final int framesPerPacket = (sampleRate + packetsPerSecond - 1) / packetsPerSecond;
+    return framesPerPacket <= UsbAudioStream.maxFramesPerPacket(format);
   }
 
   /// mono is duplicated on stereo dacs, which keeps it lossless.

@@ -40,7 +40,9 @@ final class AudioSignalPath {
   private boolean hasOutputHardwareVolume;
   private int mixerSampleRate;
 
+  /// pcm sources have no decoder, the previous track's must not linger.
   synchronized void setSource(Format format) {
+    decoderName = null;
     sourceMime = format.sampleMimeType;
     sourceSampleRate = format.sampleRate;
     sourceChannels = format.channelCount;
