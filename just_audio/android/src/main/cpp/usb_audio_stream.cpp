@@ -3,17 +3,21 @@
 // PCM written by the player lands in a lock-free ring, a dedicated thread moves it into isochronous URBs sized by
 // the DAC's own clock (async feedback endpoint). Integer input in the DAC's own format is copied untouched, float input
 // (tracks the DAC can't take losslessly, already resampled) is quantized to the DAC's resolution with TPDF dither.
+// Audio leaves the ring only once its URB is reaped, a pause discards the queued URBs and rewinds to what was really played.
 
 #include <jni.h>
 
 #include <android/log.h>
 #include <linux/usbdevice_fs.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <sys/resource.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <climits>
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
@@ -23,18 +27,22 @@
 #include <thread>
 
 #define LOG_TAG "UsbAudioStream"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 
 namespace {
 
-// -- 128 ms in flight, the streaming thread isn't realtime and app launches can hold it off for a while (#1264)
-constexpr int kUrbCount = 32;
-constexpr int kUrbDurationMs = 4;
-constexpr int kMaxPacketsPerUrb = 32;
+// -- 384 ms queued at the controller, the streaming thread isn't realtime and app launches can hold it off for a while (#1264)
+constexpr int kUrbCount = 48;
+constexpr int kUrbDurationMs = 8;
+constexpr int kMaxPacketsPerUrb = 64;
 constexpr int kUnderrunUrbs = 2;
 constexpr int kRingDurationMs = 250;
-constexpr int kScratchFrames = 4096;
 constexpr int kUrgentAudioPriority = -19;
+constexpr int kUnknownFeedbackShift = INT_MIN;
+constexpr int64_t kStallReportIntervalUs = 1000000;
+
+using Clock = std::chrono::steady_clock;
 
 struct Conversion {
   bool inputFloat;
@@ -52,8 +60,22 @@ struct Conversion {
 struct Slot {
   usbdevfs_urb *urb = nullptr;
   uint8_t *buffer = nullptr;
-  int64_t frames = 0;
+  size_t mappedBytes = 0;
+  int64_t audioFrames = 0;
   bool inFlight = false;
+};
+
+/// what starved the stream since the last report, logged so `adb logcat -s UsbAudioStream` shows where a stutter came from.
+struct StallStats {
+  int64_t starvedFrames = 0;
+  int64_t clampedFrames = 0;
+  int missedPackets = 0;
+  int64_t longestReapGapUs = 0;
+  int64_t slowestSubmitUs = 0;
+
+  bool hasStalls(int64_t urbDurationUs) const {
+    return starvedFrames > 0 || clampedFrames > 0 || missedPackets > 0 || longestReapGapUs > urbDurationUs * 3;
+  }
 };
 
 class UsbAudioStream {
@@ -65,25 +87,30 @@ class UsbAudioStream {
         feedbackEndpoint_(feedbackEndpoint),
         feedbackBytes_(feedbackBytes),
         packetsPerSecond_(packetsPerSecond),
+        sampleRate_(sampleRate),
         conversion_(conversion),
+        isPassthrough_(conversion.isPassthrough()),
+        inputFrameBytes_(conversion.inputFrameBytes()),
         bytesPerFrame_(conversion.outputFrameBytes()),
         maxPacketBytes_(maxPacketBytes),
         nominalFramesPerPacket_(static_cast<double>(sampleRate) / packetsPerSecond),
         framesPerPacket_(nominalFramesPerPacket_) {
     const int packets = packetsPerSecond * kUrbDurationMs / 1000;
     packetsPerUrb_ = packets < 1 ? 1 : (packets > kMaxPacketsPerUrb ? kMaxPacketsPerUrb : packets);
-    const int64_t ringFrames = static_cast<int64_t>(sampleRate) * kRingDurationMs / 1000;
-    ringCapacity_ = static_cast<size_t>(ringFrames * bytesPerFrame_);
+    urbDurationUs_ = static_cast<int64_t>(packetsPerUrb_) * 1000000 / packetsPerSecond;
   }
 
   ~UsbAudioStream() {
     for (Slot &slot : slots_) {
       free(slot.urb);
-      free(slot.buffer);
+      if (slot.mappedBytes > 0) {
+        munmap(slot.buffer, slot.mappedBytes);
+      } else {
+        free(slot.buffer);
+      }
     }
     free(feedbackUrb_);
     free(ring_);
-    free(scratch_);
   }
 
   bool init() {
@@ -94,49 +121,40 @@ class UsbAudioStream {
     const size_t bufferSize = static_cast<size_t>(packetsPerUrb_) * maxFramesPerPacket_ * bytesPerFrame_;
     for (Slot &slot : slots_) {
       slot.urb = static_cast<usbdevfs_urb *>(calloc(1, urbSize));
-      slot.buffer = static_cast<uint8_t *>(malloc(bufferSize));
-      if (slot.urb == nullptr || slot.buffer == nullptr) return false;
+      if (slot.urb == nullptr || !allocateBuffer(slot, bufferSize)) return false;
     }
     if (feedbackEndpoint_ > 0) {
       feedbackUrb_ = static_cast<usbdevfs_urb *>(calloc(1, sizeof(usbdevfs_urb) + sizeof(usbdevfs_iso_packet_desc)));
       if (feedbackUrb_ == nullptr) return false;
     }
-    ring_ = static_cast<uint8_t *>(malloc(ringCapacity_));
+    // -- queued urbs keep their audio in the ring until reaped, the player still gets the whole ring duration on top
+    const int64_t maxQueuedFrames = static_cast<int64_t>(kUrbCount) * packetsPerUrb_ * maxFramesPerPacket_;
+    ringCapacityFrames_ = static_cast<int64_t>(sampleRate_) * kRingDurationMs / 1000 + maxQueuedFrames;
+    ring_ = static_cast<uint8_t *>(malloc(static_cast<size_t>(ringCapacityFrames_ * inputFrameBytes_)));
     if (ring_ == nullptr) return false;
-    if (!conversion_.isPassthrough()) {
-      scratch_ = static_cast<uint8_t *>(malloc(static_cast<size_t>(kScratchFrames) * bytesPerFrame_));
-      if (scratch_ == nullptr) return false;
-    }
+    LOGI("stream: %d Hz, %d ch, %d-bit in %d-byte slots, %d packets/s, %d packets/urb, max %d frames/packet, feedback 0x%x, %s buffers",
+         sampleRate_, conversion_.outputChannels, conversion_.resolution, conversion_.subslotBytes, packetsPerSecond_, packetsPerUrb_,
+         maxFramesPerPacket_, feedbackEndpoint_, slots_[0].mappedBytes > 0 ? "mapped" : "copied");
     thread_ = std::thread(&UsbAudioStream::run, this);
     return true;
   }
 
   /// returns the input bytes consumed, whole frames only.
   int write(const uint8_t *data, int bytes) {
-    const int inputFrameBytes = conversion_.inputFrameBytes();
-    int consumed = 0;
-    while (bytes - consumed >= inputFrameBytes) {
-      const uint64_t writePos = writePos_.load(std::memory_order_relaxed);
-      const uint64_t readPos = readPos_.load(std::memory_order_acquire);
-      const int64_t freeFrames = static_cast<int64_t>(ringCapacity_ - static_cast<size_t>(writePos - readPos)) / bytesPerFrame_;
-      int64_t frames = (bytes - consumed) / inputFrameBytes;
-      if (frames > freeFrames) frames = freeFrames;
-      if (frames <= 0) break;
-      const uint8_t *source = data + consumed;
-      if (conversion_.isPassthrough()) {
-        writeToRing(source, static_cast<size_t>(frames * bytesPerFrame_));
-      } else {
-        if (frames > kScratchFrames) frames = kScratchFrames;
-        convert(source, static_cast<int>(frames));
-        writeToRing(scratch_, static_cast<size_t>(frames * bytesPerFrame_));
-      }
-      consumed += static_cast<int>(frames * inputFrameBytes);
-    }
-    if (consumed > 0) {
-      endOfStream_.store(false);
-      wake();
-    }
-    return consumed;
+    const uint64_t writeFrame = writeFrame_.load(std::memory_order_relaxed);
+    const uint64_t committedFrame = committedFrame_.load(std::memory_order_acquire);
+    const int64_t freeFrames = ringCapacityFrames_ - static_cast<int64_t>(writeFrame - committedFrame);
+    int64_t frames = bytes / inputFrameBytes_;
+    if (frames > freeFrames) frames = freeFrames;
+    if (frames <= 0) return 0;
+    const int64_t ringIndex = static_cast<int64_t>(writeFrame % static_cast<uint64_t>(ringCapacityFrames_));
+    const int64_t firstFrames = std::min(frames, ringCapacityFrames_ - ringIndex);
+    memcpy(ring_ + ringIndex * inputFrameBytes_, data, static_cast<size_t>(firstFrames * inputFrameBytes_));
+    memcpy(ring_, data + firstFrames * inputFrameBytes_, static_cast<size_t>((frames - firstFrames) * inputFrameBytes_));
+    writeFrame_.store(writeFrame + frames, std::memory_order_release);
+    endOfStream_.store(false);
+    wake();
+    return static_cast<int>(frames * inputFrameBytes_);
   }
 
   void setPlaying(bool playing) {
@@ -152,12 +170,6 @@ class UsbAudioStream {
   void setGain(float gain) { gain_.store(gain, std::memory_order_relaxed); }
 
   int64_t playedFrames() const { return playedFrames_.load(std::memory_order_acquire); }
-
-  int64_t bufferedFrames() const {
-    const uint64_t writePos = writePos_.load(std::memory_order_acquire);
-    const uint64_t readPos = readPos_.load(std::memory_order_acquire);
-    return static_cast<int64_t>((writePos - readPos) / bytesPerFrame_);
-  }
 
   int errorCode() const { return errorCode_.load(); }
 
@@ -177,7 +189,10 @@ class UsbAudioStream {
   const int feedbackEndpoint_;
   const int feedbackBytes_;
   const int packetsPerSecond_;
+  const int sampleRate_;
   const Conversion conversion_;
+  const bool isPassthrough_;
+  const int inputFrameBytes_;
   const int bytesPerFrame_;
   const int maxPacketBytes_;
   const double nominalFramesPerPacket_;
@@ -185,22 +200,27 @@ class UsbAudioStream {
   double framesPerPacket_;
   double frameAccumulator_ = 0.0;
   int packetsPerUrb_ = 1;
+  int64_t urbDurationUs_ = 0;
+  int feedbackShift_ = kUnknownFeedbackShift;
 
   Slot slots_[kUrbCount];
+  bool canMapBuffers_ = true;
   int submitIndex_ = 0;
   int inFlight_ = 0;
+  bool isRewinding_ = false;
 
   usbdevfs_urb *feedbackUrb_ = nullptr;
   uint8_t feedbackBuffer_[4] = {};
   bool feedbackInFlight_ = false;
 
   uint8_t *ring_ = nullptr;
-  uint8_t *scratch_ = nullptr;
+  int64_t ringCapacityFrames_ = 0;
+  std::atomic<uint64_t> writeFrame_{0};
+  std::atomic<uint64_t> committedFrame_{0};
+  uint64_t submitFrame_ = 0;
+
   uint32_t ditherState_ = 0x9E3779B9u;
   std::atomic<float> gain_{1.0f};
-  size_t ringCapacity_ = 0;
-  std::atomic<uint64_t> writePos_{0};
-  std::atomic<uint64_t> readPos_{0};
 
   std::atomic<int64_t> playedFrames_{0};
   std::atomic<bool> playing_{false};
@@ -208,27 +228,56 @@ class UsbAudioStream {
   std::atomic<bool> released_{false};
   std::atomic<int> errorCode_{0};
 
+  StallStats stallStats_;
+  Clock::time_point lastReapTime_;
+  Clock::time_point lastStallReportTime_;
+  bool hasReapTime_ = false;
+
   std::mutex mutex_;
   std::condition_variable condition_;
   std::thread thread_;
 
-  void wake() { condition_.notify_one(); }
+  /// usbfs memory is handed to the controller as is, a plain buffer costs a kernel allocation and a copy on every submit.
+  bool allocateBuffer(Slot &slot, size_t bytes) {
+    if (canMapBuffers_) {
+      void *mapped = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
+      if (mapped != MAP_FAILED) {
+        slot.buffer = static_cast<uint8_t *>(mapped);
+        slot.mappedBytes = bytes;
+        return true;
+      }
+      canMapBuffers_ = false;
+    }
+    slot.buffer = static_cast<uint8_t *>(malloc(bytes));
+    return slot.buffer != nullptr;
+  }
+
+  /// the mutex orders the notification after the waiter's own check, so it's never lost between the two.
+  void wake() {
+    { std::lock_guard<std::mutex> lock(mutex_); }
+    condition_.notify_one();
+  }
 
   void run() {
-    setpriority(PRIO_PROCESS, 0, kUrgentAudioPriority);
+    if (setpriority(PRIO_PROCESS, 0, kUrgentAudioPriority) != 0) LOGW("streaming thread priority unchanged, errno=%d", errno);
     while (!released_.load() && errorCode_.load() == 0) {
-      if (playing_.load()) fillUrbs();
+      const bool isPlaying = playing_.load();
+      if (isPlaying && !isRewinding_) fillUrbs();
+      if (!isPlaying && inFlight_ > 0 && !isRewinding_) discardQueued();
       if (inFlight_ > 0 || feedbackInFlight_) {
         if (!reapOne()) break;
         continue;
       }
+      hasReapTime_ = false;
       std::unique_lock<std::mutex> lock(mutex_);
       condition_.wait_for(lock, std::chrono::milliseconds(100), [this] { return hasWork(); });
     }
     drainAfterRelease();
   }
 
-  bool hasWork() const { return released_.load() || (playing_.load() && bufferedFrames() > 0); }
+  int64_t queuedFrames() const { return static_cast<int64_t>(writeFrame_.load(std::memory_order_acquire) - submitFrame_); }
+
+  bool hasWork() const { return released_.load() || (playing_.load() && queuedFrames() > 0); }
 
   void fillUrbs() {
     while (inFlight_ < kUrbCount && !released_.load()) {
@@ -238,16 +287,19 @@ class UsbAudioStream {
       double accumulator = frameAccumulator_;
       int packetFrames[kMaxPacketsPerUrb];
       int64_t urbFrames = 0;
+      int64_t clampedFrames = 0;
       for (int p = 0; p < packetsPerUrb_; p++) {
         accumulator += framesPerPacket_;
-        int frames = static_cast<int>(accumulator);
-        if (frames > maxFramesPerPacket_) frames = maxFramesPerPacket_;
-        accumulator -= frames;
+        const int wholeFrames = static_cast<int>(accumulator);
+        accumulator -= wholeFrames;
+        // -- what a tight endpoint can't take is dropped like snd-usb-audio does, carrying it over would only burst later
+        const int frames = wholeFrames < maxFramesPerPacket_ ? wholeFrames : maxFramesPerPacket_;
+        clampedFrames += wholeFrames - frames;
         packetFrames[p] = frames;
         urbFrames += frames;
       }
 
-      const int64_t availableFrames = bufferedFrames();
+      const int64_t availableFrames = queuedFrames();
       int64_t audioFrames;
       if (availableFrames >= urbFrames) {
         audioFrames = urbFrames;
@@ -256,14 +308,12 @@ class UsbAudioStream {
         audioFrames = availableFrames;
       } else if (inFlight_ <= kUnderrunUrbs) {
         audioFrames = availableFrames;
+        stallStats_.starvedFrames += urbFrames - audioFrames;
       } else {
         return;
       }
 
-      const size_t audioBytes = static_cast<size_t>(audioFrames * bytesPerFrame_);
-      const size_t urbBytes = static_cast<size_t>(urbFrames * bytesPerFrame_);
-      readFromRing(slot.buffer, audioBytes);
-      memset(slot.buffer + audioBytes, 0, urbBytes - audioBytes);
+      fillBuffer(slot.buffer, audioFrames, urbFrames);
 
       usbdevfs_urb *urb = slot.urb;
       memset(urb, 0, sizeof(usbdevfs_urb) + packetsPerUrb_ * sizeof(usbdevfs_iso_packet_desc));
@@ -271,17 +321,22 @@ class UsbAudioStream {
       urb->flags = USBDEVFS_URB_ISO_ASAP;
       urb->endpoint = static_cast<unsigned char>(endpoint_);
       urb->buffer = slot.buffer;
-      urb->buffer_length = static_cast<int>(urbBytes);
+      urb->buffer_length = static_cast<int>(urbFrames * bytesPerFrame_);
       urb->number_of_packets = packetsPerUrb_;
       for (int p = 0; p < packetsPerUrb_; p++) {
         urb->iso_frame_desc[p].length = static_cast<unsigned int>(packetFrames[p] * bytesPerFrame_);
       }
+      const Clock::time_point submitStart = Clock::now();
       if (ioctl(fd_, USBDEVFS_SUBMITURB, urb) < 0) {
         fail(errno);
         return;
       }
+      const int64_t submitUs = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - submitStart).count();
+      stallStats_.slowestSubmitUs = std::max(stallStats_.slowestSubmitUs, submitUs);
+      stallStats_.clampedFrames += clampedFrames;
       frameAccumulator_ = accumulator;
-      slot.frames = audioFrames;
+      submitFrame_ += static_cast<uint64_t>(audioFrames);
+      slot.audioFrames = audioFrames;
       slot.inFlight = true;
       inFlight_++;
       submitIndex_ = (submitIndex_ + 1) % kUrbCount;
@@ -289,23 +344,32 @@ class UsbAudioStream {
     }
   }
 
-  void writeToRing(const uint8_t *data, size_t bytes) {
-    const uint64_t writePos = writePos_.load(std::memory_order_relaxed);
-    const size_t start = static_cast<size_t>(writePos % ringCapacity_);
-    const size_t firstPart = bytes < ringCapacity_ - start ? bytes : ringCapacity_ - start;
-    memcpy(ring_ + start, data, firstPart);
-    memcpy(ring_, data + firstPart, bytes - firstPart);
-    writePos_.store(writePos + bytes, std::memory_order_release);
+  /// copies or converts [audioFrames] from the ring at the submit position, the rest of the urb is silence.
+  void fillBuffer(uint8_t *out, int64_t audioFrames, int64_t urbFrames) {
+    uint64_t frame = submitFrame_;
+    int64_t remaining = audioFrames;
+    while (remaining > 0) {
+      const int64_t ringIndex = static_cast<int64_t>(frame % static_cast<uint64_t>(ringCapacityFrames_));
+      const int64_t frames = std::min(remaining, ringCapacityFrames_ - ringIndex);
+      const uint8_t *source = ring_ + ringIndex * inputFrameBytes_;
+      if (isPassthrough_) {
+        memcpy(out, source, static_cast<size_t>(frames * bytesPerFrame_));
+      } else {
+        convert(source, frames, out);
+      }
+      out += frames * bytesPerFrame_;
+      frame += static_cast<uint64_t>(frames);
+      remaining -= frames;
+    }
+    memset(out, 0, static_cast<size_t>((urbFrames - audioFrames) * bytesPerFrame_));
   }
 
-  void readFromRing(uint8_t *out, size_t bytes) {
-    if (bytes == 0) return;
-    const uint64_t readPos = readPos_.load(std::memory_order_relaxed);
-    const size_t start = static_cast<size_t>(readPos % ringCapacity_);
-    const size_t firstPart = bytes < ringCapacity_ - start ? bytes : ringCapacity_ - start;
-    memcpy(out, ring_ + start, firstPart);
-    memcpy(out + firstPart, ring_, bytes - firstPart);
-    readPos_.store(readPos + bytes, std::memory_order_release);
+  /// a paused stream stops right away instead of playing out the queue, the unplayed audio is rewound once every urb is back.
+  void discardQueued() {
+    for (Slot &slot : slots_) {
+      if (slot.inFlight) ioctl(fd_, USBDEVFS_DISCARDURB, slot.urb);
+    }
+    isRewinding_ = true;
   }
 
   float nextDither() {
@@ -332,10 +396,9 @@ class UsbAudioStream {
   }
 
   /// mono is duplicated, surround keeps its front pair with center and surrounds folded in at -3 dB.
-  void convert(const uint8_t *input, int frames) {
+  void convert(const uint8_t *input, int64_t frames, uint8_t *out) {
     const Conversion &c = conversion_;
     const bool isIntegerCopy = !c.inputFloat && c.inputBytesPerSample == c.subslotBytes;
-    const int inputFrameBytes = c.inputFrameBytes();
     const float fullScale = static_cast<float>(1LL << (c.resolution - 1));
     const int64_t maxValue = (1LL << (c.resolution - 1)) - 1;
     const int64_t minValue = -(1LL << (c.resolution - 1));
@@ -343,9 +406,8 @@ class UsbAudioStream {
     const bool isSurroundFold = c.inputChannels >= 6 && c.outputChannels == 2;
     const float foldScale = isSurroundFold ? 1.0f / 2.4142f : 1.0f;
     const float gain = gain_.load(std::memory_order_relaxed);
-    uint8_t *out = scratch_;
-    for (int f = 0; f < frames; f++) {
-      const uint8_t *frame = input + static_cast<size_t>(f) * inputFrameBytes;
+    for (int64_t f = 0; f < frames; f++) {
+      const uint8_t *frame = input + f * inputFrameBytes_;
       for (int ch = 0; ch < c.outputChannels; ch++) {
         const int sourceChannel = c.inputChannels == 1 ? 0 : (ch < c.inputChannels ? ch : -1);
         if (isIntegerCopy && sourceChannel >= 0 && !isSurroundFold) {
@@ -404,29 +466,85 @@ class UsbAudioStream {
     }
     for (Slot &slot : slots_) {
       if (slot.urb != completed) continue;
-      slot.inFlight = false;
-      inFlight_--;
-      playedFrames_.fetch_add(slot.frames, std::memory_order_release);
+      onDataReaped(slot);
       break;
     }
     return true;
   }
 
-  /// high speed reports frames per microframe in 16.16, full speed frames per frame in 10.14, some devices mix them up.
+  void onDataReaped(Slot &slot) {
+    const usbdevfs_urb *urb = slot.urb;
+    int64_t played = slot.audioFrames;
+    if (isRewinding_ && urb->status != 0) {
+      int64_t sentBytes = 0;
+      for (int p = 0; p < urb->number_of_packets; p++) {
+        if (urb->iso_frame_desc[p].status == 0) sentBytes += urb->iso_frame_desc[p].actual_length;
+      }
+      played = std::min(played, sentBytes / bytesPerFrame_);
+    } else {
+      for (int p = 0; p < urb->number_of_packets; p++) {
+        if (urb->iso_frame_desc[p].status != 0) stallStats_.missedPackets++;
+      }
+      trackReapGap();
+    }
+    slot.inFlight = false;
+    inFlight_--;
+    committedFrame_.store(committedFrame_.load(std::memory_order_relaxed) + static_cast<uint64_t>(played), std::memory_order_release);
+    playedFrames_.fetch_add(played, std::memory_order_release);
+    if (isRewinding_ && inFlight_ == 0) {
+      submitFrame_ = committedFrame_.load(std::memory_order_relaxed);
+      isRewinding_ = false;
+      hasReapTime_ = false;
+    }
+  }
+
+  void trackReapGap() {
+    const Clock::time_point now = Clock::now();
+    if (hasReapTime_) {
+      const int64_t gapUs = std::chrono::duration_cast<std::chrono::microseconds>(now - lastReapTime_).count();
+      stallStats_.longestReapGapUs = std::max(stallStats_.longestReapGapUs, gapUs);
+    }
+    lastReapTime_ = now;
+    hasReapTime_ = true;
+    const int64_t sinceReportUs = std::chrono::duration_cast<std::chrono::microseconds>(now - lastStallReportTime_).count();
+    if (sinceReportUs < kStallReportIntervalUs) return;
+    if (stallStats_.hasStalls(urbDurationUs_)) {
+      LOGW("stalls: starved %lld frames, clamped %lld frames, missed %d packets, longest reap gap %lld us, slowest submit %lld us",
+           static_cast<long long>(stallStats_.starvedFrames), static_cast<long long>(stallStats_.clampedFrames), stallStats_.missedPackets,
+           static_cast<long long>(stallStats_.longestReapGapUs), static_cast<long long>(stallStats_.slowestSubmitUs));
+    }
+    stallStats_ = StallStats();
+    lastStallReportTime_ = now;
+  }
+
+  /// the format differs between devices (10.14 or 16.16, per frame, microframe or packet), always a power of two apart, so like
+  /// snd-usb-audio the first value is shifted until it lands near the nominal rate, and that shift sticks while values stay plausible.
   void onFeedback(const usbdevfs_urb *urb) {
     if (urb->status != 0 || urb->iso_frame_desc[0].actual_length < 3) return;
     uint32_t raw = feedbackBuffer_[0] | (feedbackBuffer_[1] << 8) | (feedbackBuffer_[2] << 16);
     if (urb->iso_frame_desc[0].actual_length >= 4) raw |= static_cast<uint32_t>(feedbackBuffer_[3]) << 24;
-    const bool isHighSpeedTiming = packetsPerSecond_ > 1000;
-    const double perServiceUnit = isHighSpeedTiming ? raw / 65536.0 : raw / 16384.0;
-    const double unitsPerPacket = isHighSpeedTiming ? 8000.0 / packetsPerSecond_ : 1000.0 / packetsPerSecond_;
-    const double candidates[] = {perServiceUnit, perServiceUnit * 4.0, perServiceUnit / 4.0};
-    for (double candidate : candidates) {
-      const double framesPerPacket = candidate * unitsPerPacket;
-      if (framesPerPacket > nominalFramesPerPacket_ * 0.9 && framesPerPacket < nominalFramesPerPacket_ * 1.1) {
-        framesPerPacket_ = framesPerPacket;
-        return;
+    if (raw == 0) return;
+    double framesPerPacket = raw / 65536.0;
+    if (feedbackShift_ == kUnknownFeedbackShift) {
+      int shift = 0;
+      while (framesPerPacket < nominalFramesPerPacket_ * 0.75 && shift < 24) {
+        framesPerPacket *= 2.0;
+        shift++;
       }
+      while (framesPerPacket >= nominalFramesPerPacket_ * 1.5 && shift > -24) {
+        framesPerPacket *= 0.5;
+        shift--;
+      }
+      feedbackShift_ = shift;
+      LOGI("feedback: raw 0x%x, shift %d, %.4f frames/packet, nominal %.4f", raw, shift, framesPerPacket, nominalFramesPerPacket_);
+    } else {
+      framesPerPacket = std::ldexp(framesPerPacket, feedbackShift_);
+    }
+    const bool isPlausible = framesPerPacket >= nominalFramesPerPacket_ * 0.875 && framesPerPacket <= nominalFramesPerPacket_ * 1.125;
+    if (isPlausible) {
+      framesPerPacket_ = framesPerPacket;
+    } else {
+      feedbackShift_ = kUnknownFeedbackShift;
     }
   }
 

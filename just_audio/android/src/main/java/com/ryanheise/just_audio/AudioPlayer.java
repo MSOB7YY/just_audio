@@ -1329,9 +1329,9 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         builder.setLivePlaybackSpeedControl(livePlaybackSpeedControl);
       }
 
-      final long minSilenceDur = 2_000_000; // 2 seconds
-      final long paddingSilenceDur = 200_000; // 200 ms
-      final short silenceThresholdPCM = 512;
+      // -- silences over 2 s shrink to 2 s, anything under -50 dBFS is silent, like the desktop player
+      final long silenceDurationUs = 2_000_000;
+      final short silenceThresholdPCM = 104;
 
       final int rendererMode = rendererTier == RendererTier.HW
                     ? DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
@@ -1395,7 +1395,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
             boolean enableAudioOutputPlaybackParams) {
           return new DefaultAudioSink.Builder(context)
               .setAudioProcessorChain(new PlaybackAudioProcessorChain(
-                  new SilenceSkippingAudioProcessor(minSilenceDur, paddingSilenceDur, silenceThresholdPCM),
+                  new SilenceSkippingAudioProcessor(silenceDurationUs, 0f, silenceDurationUs, 0, silenceThresholdPCM),
                   new UsbRateConverterAudioProcessor(outputManager::getUsbTargetSampleRate)))
               .setEnableFloatOutput(true)
               .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)

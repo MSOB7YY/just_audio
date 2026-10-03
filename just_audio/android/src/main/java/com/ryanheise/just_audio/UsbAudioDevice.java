@@ -121,7 +121,7 @@ final class UsbAudioDevice {
       final UsbInterface usbInterface = device.getInterface(i);
       if (usbInterface.getAlternateSetting() != 0 || !isUsedInterface(descriptors, usbInterface.getId())) continue;
       if (!connection.claimInterface(usbInterface, true)) {
-        for (UsbInterface claimedInterface : claimed) connection.releaseInterface(claimedInterface);
+        releaseInterfaces(connection, claimed, descriptors.controlInterface);
         connection.close();
         return null;
       }
@@ -315,10 +315,21 @@ final class UsbAudioDevice {
     }
     for (UsbInterface usbInterface : claimedInterfaces) {
       if (usbInterface.getId() != descriptors.controlInterface) connection.setInterface(usbInterface);
-      connection.releaseInterface(usbInterface);
     }
+    releaseInterfaces(connection, claimedInterfaces, descriptors.controlInterface);
     connection.close();
     activeFormat = null;
+  }
+
+  /// android reconnects the kernel driver on each release, it probes from the control interface and only takes streaming interfaces
+  /// that are already free, so those go back first, or the dac comes back without playback until replugged (#1265).
+  private static void releaseInterfaces(UsbDeviceConnection connection, List<UsbInterface> interfaces, int controlInterface) {
+    for (UsbInterface usbInterface : interfaces) {
+      if (usbInterface.getId() != controlInterface) connection.releaseInterface(usbInterface);
+    }
+    for (UsbInterface usbInterface : interfaces) {
+      if (usbInterface.getId() == controlInterface) connection.releaseInterface(usbInterface);
+    }
   }
 
   private boolean writeVolume(UsbAudioDescriptors.VolumeControl control, int value) {

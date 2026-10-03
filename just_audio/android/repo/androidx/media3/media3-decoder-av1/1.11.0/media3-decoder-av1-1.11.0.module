@@ -42,11 +42,11 @@
         {
           "name": "media3-decoder-av1-1.11.0.aar",
           "url": "media3-decoder-av1-1.11.0.aar",
-          "size": 2292134,
-          "sha512": "11a4d173c9cb51fc20b7ed15ef9166ffa4784ff4c4bcec2d9817e17b7a14a3544b04fa91384acca0fa523b01c2ec8f62357ad8a7180f8695f49f4cf6939ac17a",
-          "sha256": "c033f772e146aea2b00fe8021065516e41a051bf53d544a3e1c4a91a834243fa",
-          "sha1": "7a7e9df21f162ecb85d7b054eb415ca71166ae44",
-          "md5": "498c2cfd696811108abffce19e14e90d"
+          "size": 2292125,
+          "sha512": "541e7271df9b052dfecebfcd6ff98ba5c94328cc349385cb179419bf9def913e143c4e3401dc838f812aca04906e9f4f44c0734d096e1d01e916b2b84dbd0b7a",
+          "sha256": "b0c938e95596fc8574029ffc929c4ff7e981a1257aef22b46319d81ccdc83dcf",
+          "sha1": "baf20d98d9944985b9c55fdd9d3e9603a11a65e0",
+          "md5": "66d22fa226b56e3500d556db135d7749"
         }
       ]
     },
@@ -92,11 +92,11 @@
         {
           "name": "media3-decoder-av1-1.11.0.aar",
           "url": "media3-decoder-av1-1.11.0.aar",
-          "size": 2292134,
-          "sha512": "11a4d173c9cb51fc20b7ed15ef9166ffa4784ff4c4bcec2d9817e17b7a14a3544b04fa91384acca0fa523b01c2ec8f62357ad8a7180f8695f49f4cf6939ac17a",
-          "sha256": "c033f772e146aea2b00fe8021065516e41a051bf53d544a3e1c4a91a834243fa",
-          "sha1": "7a7e9df21f162ecb85d7b054eb415ca71166ae44",
-          "md5": "498c2cfd696811108abffce19e14e90d"
+          "size": 2292125,
+          "sha512": "541e7271df9b052dfecebfcd6ff98ba5c94328cc349385cb179419bf9def913e143c4e3401dc838f812aca04906e9f4f44c0734d096e1d01e916b2b84dbd0b7a",
+          "sha256": "b0c938e95596fc8574029ffc929c4ff7e981a1257aef22b46319d81ccdc83dcf",
+          "sha1": "baf20d98d9944985b9c55fdd9d3e9603a11a65e0",
+          "md5": "66d22fa226b56e3500d556db135d7749"
         }
       ]
     },
