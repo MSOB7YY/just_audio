@@ -240,13 +240,12 @@ final class UsbAudioDevice {
   /// the player's volume for [stream], linear. it lands in the dac's own volume when it has one, so the samples stay untouched,
   /// otherwise it scales [stream]'s float input before dithering ([isFloat]), and integer streams stay fixed.
   synchronized void setVolume(UsbAudioStream stream, float gain, boolean isFloat) {
-    final float effectiveGain = gain * systemGain;
+    if (isFloat) softwareGainStreams.put(stream, gain);
     if (volumeRange != null) {
       playerGain = gain;
-      writeHardwareGain(effectiveGain);
+      applyHardwareGain();
     } else if (isFloat) {
-      softwareGainStreams.put(stream, gain);
-      stream.setGain(effectiveGain);
+      stream.setGain(gain * systemGain);
     }
   }
 
@@ -255,7 +254,7 @@ final class UsbAudioDevice {
     if (gain == systemGain) return;
     systemGain = gain;
     if (volumeRange != null) {
-      writeHardwareGain(playerGain * gain);
+      applyHardwareGain();
       return;
     }
     for (Map.Entry<UsbAudioStream, Float> entry : softwareGainStreams.entrySet()) {
@@ -265,12 +264,20 @@ final class UsbAudioDevice {
     }
   }
 
-  private void writeHardwareGain(float gain) {
+  /// a dac's range usually stops well above silence, what it can't attenuate is taken off float streams in software,
+  /// integer streams stay at its minimum. muting there instead would cut the sound off at the bottom of the range (#1265).
+  private void applyHardwareGain() {
+    final float residualGain = writeHardwareGain(playerGain * systemGain);
+    for (UsbAudioStream stream : softwareGainStreams.keySet()) stream.setGain(residualGain);
+  }
+
+  /// returns the gain the dac's volume falls short of, linear.
+  private float writeHardwareGain(float gain) {
     final VolumeRange range = volumeRange;
     final UsbAudioDescriptors.VolumeControl control = descriptors.volumeControl;
-    final double db = gain <= 0f ? Double.NEGATIVE_INFINITY : 20.0 * Math.log10(gain);
-    final boolean mute = db * 256.0 <= range.min;
-    int value = mute ? range.min : (int) Math.round(db * 256.0);
+    final boolean mute = gain <= 0f;
+    final double db = mute ? range.min / 256.0 : 20.0 * Math.log10(gain);
+    int value = (int) Math.round(db * 256.0);
     if (range.resolution > 0) value = range.min + Math.round((value - range.min) / (float) range.resolution) * range.resolution;
     value = Math.max(range.min, Math.min(range.max, value));
     if (value != appliedVolume) {
@@ -281,6 +288,9 @@ final class UsbAudioDevice {
       appliedMute = mute;
       writeMute(control, mute);
     }
+    if (mute) return 0f;
+    final double residualDb = db - value / 256.0;
+    return (float) Math.min(1.0, Math.pow(10.0, residualDb / 20.0));
   }
 
   /// false once the device is closing, a stream must never outlive the connection it streams on.
@@ -479,6 +489,7 @@ final class UsbAudioDevice {
     writeVolume(control, currentVolume);
     final boolean isWritable = didWrite && readBack == probeVolume;
     if (!isWritable) Log.w(TAG, "volume control isn't writable, wrote=" + probeVolume + " read=" + readBack);
+    if (isWritable) Log.i(TAG, "volume range " + range.min / 256f + " to " + range.max / 256f + " dB, step " + range.resolution / 256f);
     return isWritable ? range : null;
   }
 
