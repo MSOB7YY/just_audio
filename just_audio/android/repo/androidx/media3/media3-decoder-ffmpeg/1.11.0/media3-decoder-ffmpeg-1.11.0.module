@@ -42,11 +42,11 @@
         {
           "name": "media3-decoder-ffmpeg-1.11.0.aar",
           "url": "media3-decoder-ffmpeg-1.11.0.aar",
-          "size": 10975895,
-          "sha512": "c5aeca81e63592417361e179a10cf4d1b733360670735184d4d0c4263fba0311d195f4fea09d9c17cb7284a7ea09e8a7caae8213163c62674e053ff3718f9dbc",
-          "sha256": "febf9cd2211c06c700d3d90bb5bfa62a25f3e4da6ea9f0406f0ab60f5f631cc9",
-          "sha1": "23c9acd10ba00a9d471660f617239f2ff30a19ee",
-          "md5": "586b21b5869918c14e8b5385a72414c6"
+          "size": 11085505,
+          "sha512": "31e878bf3f2870ed874a077f60f5ec039861462d0c3ddb323689686b8fbae9896402e280aa6d0be09c7e5623a972ca201ae289b79a1c74b8750326b453e59685",
+          "sha256": "a2bfb74cc088331b6d7ebe58ed3102e121319f33e9c1b1bf2106a62e79d6f45a",
+          "sha1": "e8ca4adaac47e40e8f1424c95824b2dade7a096b",
+          "md5": "d0653c88e479cb35da6862af5b6b095a"
         }
       ]
     },
@@ -92,11 +92,11 @@
         {
           "name": "media3-decoder-ffmpeg-1.11.0.aar",
           "url": "media3-decoder-ffmpeg-1.11.0.aar",
-          "size": 10975895,
-          "sha512": "c5aeca81e63592417361e179a10cf4d1b733360670735184d4d0c4263fba0311d195f4fea09d9c17cb7284a7ea09e8a7caae8213163c62674e053ff3718f9dbc",
-          "sha256": "febf9cd2211c06c700d3d90bb5bfa62a25f3e4da6ea9f0406f0ab60f5f631cc9",
-          "sha1": "23c9acd10ba00a9d471660f617239f2ff30a19ee",
-          "md5": "586b21b5869918c14e8b5385a72414c6"
+          "size": 11085505,
+          "sha512": "31e878bf3f2870ed874a077f60f5ec039861462d0c3ddb323689686b8fbae9896402e280aa6d0be09c7e5623a972ca201ae289b79a1c74b8750326b453e59685",
+          "sha256": "a2bfb74cc088331b6d7ebe58ed3102e121319f33e9c1b1bf2106a62e79d6f45a",
+          "sha1": "e8ca4adaac47e40e8f1424c95824b2dade7a096b",
+          "md5": "d0653c88e479cb35da6862af5b6b095a"
         }
       ]
     },
@@ -112,11 +112,11 @@
         {
           "name": "media3-decoder-ffmpeg-1.11.0-sources.jar",
           "url": "media3-decoder-ffmpeg-1.11.0-sources.jar",
-          "size": 17091,
-          "sha512": "1994b1be6a014fffa517bca4b1c8c63c1a20ceffff22c1152184ed6f309c92b580e5e8dc327ef127cd6dfb06ad01cce2e781c406672f3ff1a379b6a066b65767",
-          "sha256": "13370887ae5d8bca182ad305e2038f9055be1d825e7acfc86027e5638150d6a9",
-          "sha1": "6b8e110512dd78a3b1a0963b8c5f05cf30bea979",
-          "md5": "f3beabbd54827a010c0dc2c2abe30f8d"
+          "size": 17255,
+          "sha512": "91f60faf18bafe7c162cbe18ba3630d100d4c7a685090a5e8bce360efed9510a0ecf74ee883dfc1f95ef166a2853842784182db09d01ac397f0b9498e919063e",
+          "sha256": "8d84b233e4b498e349421f6d918269febc4d1a71fb98d133c60df23a4c6e667d",
+          "sha1": "ccccb5d4e08cf83377e5832db02bf42012660f51",
+          "md5": "69ef6070e4bcc07cc0a809ccf37e5d44"
         }
       ]
     }
