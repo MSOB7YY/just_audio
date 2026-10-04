@@ -17,12 +17,8 @@ rootProject.allprojects {
     repositories {
         google()
         mavenCentral()
-        maven {
-          url = project(':just_audio').file('repo')
-        }
         // -- our media3 build keeps the upstream version, so google() would win by repository order
-        // -- and we would silently lose our patches (ogg improvements live in media3-extractor,
-        // -- float processing and bit-perfect output live in media3-exoplayer).
+        // -- and we would silently lose our patches. every media3 module comes from `repo`.
         exclusiveContent {
             forRepository {
                 maven {
@@ -31,8 +27,7 @@ rootProject.allprojects {
                 }
             }
             filter {
-                includeModule('androidx.media3', 'media3-extractor')
-                includeModule('androidx.media3', 'media3-exoplayer')
+                includeGroup('androidx.media3')
             }
         }
     }
