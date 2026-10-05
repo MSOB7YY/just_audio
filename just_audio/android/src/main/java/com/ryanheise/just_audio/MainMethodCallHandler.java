@@ -132,6 +132,11 @@ public class MainMethodCallHandler implements MethodCallHandler {
         result.success(null);
         break;
       }
+      case "setSoundEffects": {
+        SoundEffects.set(call.arguments());
+        result.success(null);
+        break;
+      }
       case "getAudioOutputState": {
         result.success(outputManager().getState());
         break;

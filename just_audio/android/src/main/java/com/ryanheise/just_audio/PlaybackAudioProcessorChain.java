@@ -7,8 +7,8 @@ import androidx.media3.common.audio.SonicAudioProcessor;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor;
 
-/// silence skipping -> speed/pitch -> equalizer -> usb dac rate conversion, so the equalizer shapes what is actually heard
-/// and runs at the track's own rate.
+/// silence skipping -> speed/pitch -> equalizer -> sound effects -> usb dac rate conversion, so the equalizer and effects shape
+/// what is actually heard and run at the track's own rate.
 @UnstableApi
 final class PlaybackAudioProcessorChain implements AudioProcessorChain {
 
@@ -26,6 +26,7 @@ final class PlaybackAudioProcessorChain implements AudioProcessorChain {
         silenceSkippingAudioProcessor,
         sonicAudioProcessor,
         new ParametricEqualizerAudioProcessor(),
+        new SoundEffectsAudioProcessor(),
         usbRateConverterAudioProcessor,
     };
   }

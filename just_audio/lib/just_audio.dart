@@ -23,6 +23,9 @@ export 'package:just_audio_platform_interface/just_audio_platform_interface.dart
         ParametricEqualizerBandMessage,
         ParametricEqualizerBandTypeMessage,
         ParametricEqualizerChannelMessage,
+        SoundEffectsMessage,
+        SoundEffectMessage,
+        SoundEffectTypeMessage,
         AudioOutputEventMessage,
         AudioOutputDeviceMessage,
         BitPerfectStatusMessage,
@@ -4394,7 +4397,7 @@ extension _FutureIterabletUtils on Iterable<Future<void> Function()?> {
   }
 }
 
-/// Android only: output device routing, bit-perfect playback and the parametric equalizer, shared by every player.
+/// Android only: output device routing, bit-perfect playback, the parametric equalizer and sound effects, shared by every player.
 class AndroidAudioOutput {
   const AndroidAudioOutput._();
 
@@ -4416,6 +4419,9 @@ class AndroidAudioOutput {
 
   static Future<void> setMonoAudio(bool enabled) =>
       _pluginPlatform.setMonoAudio(enabled);
+
+  static Future<void> setSoundEffects(SoundEffectsMessage message) =>
+      _pluginPlatform.setSoundEffects(message);
 
   static Stream<AudioOutputEventMessage> get events =>
       _pluginPlatform.audioOutputEventStream;

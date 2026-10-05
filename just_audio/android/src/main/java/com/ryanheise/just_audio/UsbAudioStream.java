@@ -9,7 +9,7 @@ final class UsbAudioStream {
   static final int SPEED_HIGH = 3;
 
   static {
-    System.loadLibrary("just_audio_usb");
+    System.loadLibrary("just_audio_native");
   }
 
   private final long handle;

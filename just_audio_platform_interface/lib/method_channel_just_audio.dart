@@ -62,6 +62,11 @@ class MethodChannelJustAudio extends JustAudioPlatform {
   }
 
   @override
+  Future<void> setSoundEffects(SoundEffectsMessage message) {
+    return _mainChannel.invokeMethod<void>('setSoundEffects', message.toMap());
+  }
+
+  @override
   Future<void> setUsbDirectEnabled(bool enabled) {
     return _mainChannel.invokeMethod<void>(
         'setUsbDirectEnabled', <dynamic, dynamic>{'enabled': enabled});

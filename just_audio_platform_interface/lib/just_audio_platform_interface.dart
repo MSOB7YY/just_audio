@@ -83,6 +83,11 @@ abstract class JustAudioPlatform extends PlatformInterface {
     throw UnimplementedError('setMonoAudio() has not been implemented.');
   }
 
+  /// Applies sound effects to every player, after the parametric equalizer.
+  Future<void> setSoundEffects(SoundEffectsMessage message) {
+    throw UnimplementedError('setSoundEffects() has not been implemented.');
+  }
+
   /// Drives a connected USB DAC directly, bypassing Android's audio stack.
   Future<void> setUsbDirectEnabled(bool enabled) {
     throw UnimplementedError('setUsbDirectEnabled() has not been implemented.');
@@ -1839,6 +1844,43 @@ enum ParametricEqualizerBandTypeMessage {
 }
 
 enum ParametricEqualizerChannelMessage { all, left, right }
+
+/// The enabled sound effects, the ones left out are off.
+class SoundEffectsMessage {
+  final List<SoundEffectMessage> effects;
+
+  const SoundEffectsMessage({required this.effects});
+
+  Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
+        'effects': effects.map((effect) => effect.toMap()).toList(),
+      };
+}
+
+class SoundEffectMessage {
+  final SoundEffectTypeMessage type;
+
+  /// 0 leaves the audio as is, 1 is the strongest.
+  final double intensity;
+
+  const SoundEffectMessage({required this.type, required this.intensity});
+
+  Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
+        'type': type.index,
+        'intensity': intensity,
+      };
+}
+
+enum SoundEffectTypeMessage {
+  crossfeed,
+  virtualSurround,
+  echo,
+  chorus,
+  autoPan,
+  compressor,
+  instrumental,
+  bassEnhancer,
+  tubeWarmth,
+}
 
 /// A change of the output devices or of the bit-perfect status.
 class AudioOutputEventMessage {
