@@ -42,11 +42,11 @@
         {
           "name": "media3-decoder-flac-1.11.0.aar",
           "url": "media3-decoder-flac-1.11.0.aar",
-          "size": 577144,
-          "sha512": "154d694c9d92ebf873acd2ff165733fd20f143819298a6c0f48e227bb3b1205fd4386b932fe5b5fedc2f5ef615c9410f11243f2d464462843259acd5b9db496f",
-          "sha256": "d31ced45900d7e42df4a40cab70407a6c7c8114880a4a0e69d3e1b8229caf990",
-          "sha1": "f21fc98f25494c61d5627325df19577bea13c4bb",
-          "md5": "c8be8e4cf9665b31784742219b24c3c8"
+          "size": 578637,
+          "sha512": "990f85369b9f8c55970f2b3346d8d38df08f2d984bd1d9082aa35a5f49158ec5cde139588a3b9f695322b0baa853797d40bc8a5ac3f1f869e345f72b339b4b7b",
+          "sha256": "3647f3e912e7f6b51876732f25592fd871952aaa6d31dfa8759847427f7ad363",
+          "sha1": "dbb7df5bb92aec0e5055031b7bbb03aab0f9d4fd",
+          "md5": "39cdf353464beace3a278e7009e14981"
         }
       ]
     },
@@ -92,11 +92,11 @@
         {
           "name": "media3-decoder-flac-1.11.0.aar",
           "url": "media3-decoder-flac-1.11.0.aar",
-          "size": 577144,
-          "sha512": "154d694c9d92ebf873acd2ff165733fd20f143819298a6c0f48e227bb3b1205fd4386b932fe5b5fedc2f5ef615c9410f11243f2d464462843259acd5b9db496f",
-          "sha256": "d31ced45900d7e42df4a40cab70407a6c7c8114880a4a0e69d3e1b8229caf990",
-          "sha1": "f21fc98f25494c61d5627325df19577bea13c4bb",
-          "md5": "c8be8e4cf9665b31784742219b24c3c8"
+          "size": 578637,
+          "sha512": "990f85369b9f8c55970f2b3346d8d38df08f2d984bd1d9082aa35a5f49158ec5cde139588a3b9f695322b0baa853797d40bc8a5ac3f1f869e345f72b339b4b7b",
+          "sha256": "3647f3e912e7f6b51876732f25592fd871952aaa6d31dfa8759847427f7ad363",
+          "sha1": "dbb7df5bb92aec0e5055031b7bbb03aab0f9d4fd",
+          "md5": "39cdf353464beace3a278e7009e14981"
         }
       ]
     },

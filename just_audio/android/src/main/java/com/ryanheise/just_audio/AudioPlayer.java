@@ -1655,10 +1655,12 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     }
   }
 
+  // -- a load gets its own error, the event stream only reports errors after loading
   private void sendError(String errorCode, String errorMsg) {
     if (prepareResult != null) {
       prepareResult.error(errorCode, errorMsg, null);
       prepareResult = null;
+      return;
     }
 
     eventChannel.error(errorCode, errorMsg, null);
@@ -1689,6 +1691,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       playResult.success(new HashMap<String, Object>());
     }
     playResult = result;
+    // -- retries an error from where it stopped
+    if (player.getPlayerError() != null) player.prepare();
     player.setPlayWhenReady(true);
     ppLoopingPlayer(true);
     updatePosition();
