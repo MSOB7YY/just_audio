@@ -1453,9 +1453,18 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     player.prepare();
   }
 
-  void pauseForAudioOutput() {
-    if (player == null) return;
+  /// true when it was playing, so a usb claim can resume it.
+  boolean pauseForAudioOutput() {
+    if (player == null || !player.getPlayWhenReady()) return false;
     pause();
+    return true;
+  }
+
+  void resumeForAudioOutput() {
+    if (player == null || player.getPlayWhenReady()) return;
+    player.setPlayWhenReady(true);
+    ppLoopingPlayer(true);
+    updatePosition();
   }
 
   /// bit-perfect also changes the renderers order, which needs a new player.

@@ -9,11 +9,15 @@ import android.content.IntentFilter;
 import android.content.pm.ResolveInfo;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbManager;
+import android.media.AudioManager;
+import android.media.AudioPlaybackConfiguration;
 import android.os.Build;
 import android.os.Handler;
+import android.os.SystemClock;
 import android.util.Log;
 
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 
 import java.util.HashMap;
 import java.util.List;
@@ -24,11 +28,21 @@ import java.util.Map;
 ///
 /// an app declaring a USB_DEVICE_ATTACHED activity gets plugged dacs handed over by the system, with its own
 /// dialog and the permission already granted ([#onHandedOver]), so a dac plugged in isn't asked for twice.
+///
+/// detaching the kernel driver while android still streams to the dac locks the usb stack on snapdragon phones (the dsp
+/// offload session is torn down under it, snapshots#121), so a claim pauses the players, waits for every playback to stop
+/// plus audioflinger's standby, and opens the dac off the main thread.
 final class UsbDirectManager {
 
   private static final String TAG = "UsbDirectManager";
 
   interface Listener {
+    /// the players are paused so android lets go of the dac.
+    void onUsbDirectClaiming();
+
+    /// [resume] plays again what [#onUsbDirectClaiming] paused, a dac that went away keeps them paused.
+    void onUsbDirectClaimEnded(boolean resume);
+
     void onUsbDirectChanged(boolean didClaimChange);
   }
 
@@ -36,11 +50,16 @@ final class UsbDirectManager {
   private static final String STATE_NO_DEVICE = "no_device";
   private static final String STATE_AWAITING_PERMISSION = "awaiting_permission";
   private static final String STATE_PERMISSION_DENIED = "permission_denied";
+  private static final String STATE_WAITING_PLAYBACK = "waiting_playback";
+  private static final String STATE_CLAIMING = "claiming";
   private static final String STATE_UNSUPPORTED_DEVICE = "unsupported_device";
   private static final String STATE_FAILED = "failed";
   private static final String STATE_ACTIVE = "active";
 
   private static final String ACTION_USB_PERMISSION = "com.ryanheise.just_audio.USB_PERMISSION";
+
+  // -- audioflinger keeps the hal stream open this long after the last track stops (kDefaultStandbyTimeInNsecs), plus margin
+  private static final long STANDBY_GRACE_MS = 3500;
 
   private final Context context;
   private final UsbManager usbManager;
@@ -66,17 +85,42 @@ final class UsbDirectManager {
       }
     }
   };
+  private final Runnable openPendingDevice = this::continueClaim;
 
   private boolean isEnabled;
   @Nullable private volatile UsbAudioDevice device;
   private String state = STATE_OFF;
   @Nullable private String stateDeviceName;
 
-  UsbDirectManager(Context context, Handler handler, Listener listener) {
+  @Nullable private UsbDevice pendingDevice;
+  private int claimGeneration;
+  private boolean isPlaybackActive;
+  private long lastActivePlaybackUptime;
+
+  UsbDirectManager(Context context, AudioManager audioManager, Handler handler, Listener listener) {
     this.context = context;
     this.usbManager = (UsbManager) context.getSystemService(Context.USB_SERVICE);
     this.handler = handler;
     this.listener = listener;
+    if (Build.VERSION.SDK_INT >= 26) followPlayback(audioManager);
+  }
+
+  @RequiresApi(26)
+  private void followPlayback(AudioManager audioManager) {
+    final boolean isActiveNow = !audioManager.getActivePlaybackConfigurations().isEmpty();
+    onPlaybackChanged(isActiveNow);
+    audioManager.registerAudioPlaybackCallback(new AudioManager.AudioPlaybackCallback() {
+      @Override
+      public void onPlaybackConfigChanged(List<AudioPlaybackConfiguration> configs) {
+        onPlaybackChanged(!configs.isEmpty());
+      }
+    }, handler);
+  }
+
+  private void onPlaybackChanged(boolean isActive) {
+    if (isActive || isPlaybackActive) lastActivePlaybackUptime = SystemClock.uptimeMillis();
+    isPlaybackActive = isActive;
+    if (!isActive && pendingDevice != null && STATE_WAITING_PLAYBACK.equals(state)) continueClaim();
   }
 
   static boolean isDeviceAttachedIntent(Intent intent) {
@@ -101,11 +145,12 @@ final class UsbDirectManager {
     isEnabled = enabled;
     if (enabled) {
       registerReceiver();
-      final boolean didClaim = claimAttachedDac();
-      listener.onUsbDirectChanged(didClaim);
+      claimAttachedDac();
+      listener.onUsbDirectChanged(false);
       return;
     }
     context.unregisterReceiver(receiver);
+    cancelClaim(true);
     final boolean didRelease = releaseDevice();
     setState(STATE_OFF, null);
     listener.onUsbDirectChanged(didRelease);
@@ -141,70 +186,122 @@ final class UsbDirectManager {
   /// the activity got the dac from the system, permission included.
   void onHandedOver(Intent intent) {
     @Nullable final UsbDevice usbDevice = getUsbDeviceExtra(intent);
-    if (!isEnabled || device != null || usbDevice == null || !UsbAudioDevice.isAudioOutput(usbDevice)) return;
-    final boolean didClaim = claim(usbDevice);
-    listener.onUsbDirectChanged(didClaim);
+    if (!isEnabled || isBusy() || usbDevice == null || !UsbAudioDevice.isAudioOutput(usbDevice)) return;
+    claim(usbDevice);
+  }
+
+  private boolean isBusy() {
+    return device != null || pendingDevice != null;
   }
 
   private void onAttached(UsbDevice usbDevice) {
-    if (device != null || !UsbAudioDevice.isAudioOutput(usbDevice)) return;
+    if (isBusy() || !UsbAudioDevice.isAudioOutput(usbDevice)) return;
     if (!usbManager.hasPermission(usbDevice) && isAttachHandledBySystem()) {
       setState(STATE_AWAITING_PERMISSION, UsbAudioDevice.displayNameOf(usbDevice));
       listener.onUsbDirectChanged(false);
       return;
     }
-    final boolean didClaim = claim(usbDevice);
-    listener.onUsbDirectChanged(didClaim);
+    claim(usbDevice);
   }
 
   private void onDetached(UsbDevice usbDevice) {
     if (!UsbAudioDevice.isAudioOutput(usbDevice)) return;
     @Nullable final UsbAudioDevice current = device;
     if (current != null && !isSameDevice(current.device, usbDevice)) return;
+    if (pendingDevice != null && !isSameDevice(pendingDevice, usbDevice)) return;
+    cancelClaim(false);
     final boolean didRelease = releaseDevice();
-    final boolean didClaim = claimAttachedDac();
-    listener.onUsbDirectChanged(didRelease || didClaim);
+    claimAttachedDac();
+    listener.onUsbDirectChanged(didRelease);
   }
 
   private void onPermissionResult(UsbDevice usbDevice, boolean isGranted) {
-    if (!isEnabled || device != null) return;
+    if (!isEnabled || isBusy()) return;
     if (!isGranted) {
       final String deviceName = UsbAudioDevice.displayNameOf(usbDevice);
       setState(STATE_PERMISSION_DENIED, deviceName);
       listener.onUsbDirectChanged(false);
       return;
     }
-    final boolean didClaim = claim(usbDevice);
-    listener.onUsbDirectChanged(didClaim);
+    claim(usbDevice);
   }
 
-  private boolean claimAttachedDac() {
+  private void claimAttachedDac() {
     for (UsbDevice usbDevice : usbManager.getDeviceList().values()) {
-      if (UsbAudioDevice.isAudioOutput(usbDevice)) return claim(usbDevice);
+      if (UsbAudioDevice.isAudioOutput(usbDevice)) {
+        claim(usbDevice);
+        return;
+      }
     }
     setState(STATE_NO_DEVICE, null);
-    return false;
   }
 
-  private boolean claim(UsbDevice usbDevice) {
-    final String deviceName = UsbAudioDevice.displayNameOf(usbDevice);
+  private void claim(UsbDevice usbDevice) {
     if (!usbManager.hasPermission(usbDevice)) {
       Log.i(TAG, "requesting permission for " + usbDevice.getDeviceName());
-      setState(STATE_AWAITING_PERMISSION, deviceName);
+      setState(STATE_AWAITING_PERMISSION, UsbAudioDevice.displayNameOf(usbDevice));
       final PendingIntent permissionIntent = createPermissionIntent();
       usbManager.requestPermission(usbDevice, permissionIntent);
-      return false;
+      listener.onUsbDirectChanged(false);
+      return;
     }
-    @Nullable final UsbAudioDevice opened = UsbAudioDevice.open(usbManager, usbDevice);
+    pendingDevice = usbDevice;
+    claimGeneration++;
+    // -- without playback callbacks the last activity is unknown, the claim takes the full standby wait
+    if (Build.VERSION.SDK_INT < 26) lastActivePlaybackUptime = SystemClock.uptimeMillis();
+    listener.onUsbDirectClaiming();
+    continueClaim();
+  }
+
+  private void continueClaim() {
+    @Nullable final UsbDevice usbDevice = pendingDevice;
+    if (usbDevice == null) return;
+    final String deviceName = UsbAudioDevice.displayNameOf(usbDevice);
+    if (isPlaybackActive) {
+      setState(STATE_WAITING_PLAYBACK, deviceName);
+      listener.onUsbDirectChanged(false);
+      return;
+    }
+    final long remainingMs = lastActivePlaybackUptime + STANDBY_GRACE_MS - SystemClock.uptimeMillis();
+    setState(STATE_CLAIMING, deviceName);
+    listener.onUsbDirectChanged(false);
+    if (remainingMs > 0) {
+      handler.postDelayed(openPendingDevice, remainingMs);
+      return;
+    }
+    final int generation = claimGeneration;
+    new Thread(() -> {
+      @Nullable final UsbAudioDevice opened = UsbAudioDevice.open(usbManager, usbDevice);
+      handler.post(() -> onOpened(generation, usbDevice, opened));
+    }, "UsbDirectOpen").start();
+  }
+
+  private void onOpened(int generation, UsbDevice usbDevice, @Nullable UsbAudioDevice opened) {
+    if (generation != claimGeneration) {
+      if (opened != null) new Thread(opened::close, "UsbDirectClose").start();
+      return;
+    }
+    pendingDevice = null;
     if (opened == null) {
-      setState(STATE_UNSUPPORTED_DEVICE, deviceName);
-      return false;
+      setState(STATE_UNSUPPORTED_DEVICE, UsbAudioDevice.displayNameOf(usbDevice));
+      listener.onUsbDirectChanged(false);
+      listener.onUsbDirectClaimEnded(true);
+      return;
     }
     synchronized (this) {
       device = opened;
     }
     setState(STATE_ACTIVE, opened.name);
-    return true;
+    listener.onUsbDirectChanged(true);
+    listener.onUsbDirectClaimEnded(true);
+  }
+
+  private void cancelClaim(boolean resume) {
+    if (pendingDevice == null) return;
+    pendingDevice = null;
+    claimGeneration++;
+    handler.removeCallbacks(openPendingDevice);
+    listener.onUsbDirectClaimEnded(resume);
   }
 
   /// the released device closes once its last stream is gone.

@@ -74,10 +74,31 @@ final class AudioOutputManager {
   private Map<String, Object> status = statusOf(REASON_DISABLED, null, 0, 0);
   private int usbStreamSampleRate;
   private int usbStreamBitDepth;
+  private final List<AudioPlayer> playersPausedForUsbClaim = new ArrayList<>();
 
   private AudioOutputManager(Context context) {
     audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-    usbDirect = new UsbDirectManager(context, handler, this::onUsbDirectChanged);
+    usbDirect = new UsbDirectManager(context, audioManager, handler, new UsbDirectManager.Listener() {
+      @Override
+      public void onUsbDirectClaiming() {
+        for (AudioPlayer player : MainMethodCallHandler.allPlayers()) {
+          if (player.pauseForAudioOutput()) playersPausedForUsbClaim.add(player);
+        }
+      }
+
+      @Override
+      public void onUsbDirectClaimEnded(boolean resume) {
+        if (resume) {
+          for (AudioPlayer player : playersPausedForUsbClaim) player.resumeForAudioOutput();
+        }
+        playersPausedForUsbClaim.clear();
+      }
+
+      @Override
+      public void onUsbDirectChanged(boolean didClaimChange) {
+        AudioOutputManager.this.onUsbDirectChanged(didClaimChange);
+      }
+    });
     systemVolume = new SystemVolumeFollower(context, audioManager, handler);
     audioManager.registerAudioDeviceCallback(new AudioDeviceCallback() {
       @Override

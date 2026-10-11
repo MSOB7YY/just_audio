@@ -2098,6 +2098,8 @@ enum UsbDirectStateMessage {
   noDevice,
   awaitingPermission,
   permissionDenied,
+  waitingPlayback,
+  claiming,
   unsupportedDevice,
   failed,
   active;
@@ -2106,6 +2108,8 @@ enum UsbDirectStateMessage {
         'no_device' => noDevice,
         'awaiting_permission' => awaitingPermission,
         'permission_denied' => permissionDenied,
+        'waiting_playback' => waitingPlayback,
+        'claiming' => claiming,
         'unsupported_device' => unsupportedDevice,
         'failed' => failed,
         'active' => active,
