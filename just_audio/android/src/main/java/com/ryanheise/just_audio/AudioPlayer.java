@@ -755,14 +755,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         videoEventChannel.error("VIDEO_ERROR", "Error playing video", error);
         handledVideoError = true;
         this.videoOptions = null;
-        this.mediaSource = this.audioSource;
-        int currentWindowIndex = player.getCurrentMediaItemIndex();
-        long pos = player.getCurrentPosition();
-        if (pos < 0)
-          pos = 0;
-        player.setMediaSource(this.mediaSource);
-        player.seekTo(currentWindowIndex, pos);
-        player.prepare();
+        setSourceKeepingPosition(this.audioSource);
         return;
       }
       switch (exoError.type) {
@@ -1217,6 +1210,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     final Boolean silentVideoDisposal = false;
 
     if (videoOptions != null && videoOptions.loop == true) {
+      if (this.mediaSource instanceof MergingMediaSource) setSourceKeepingPosition(this.audioSource);
       updateLoopingPlayer();
     } else {
       disposeLoopingPlayer();
@@ -1236,19 +1230,19 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         // else {} // video is null && current source is already audio only, do nothing.
       }
 
-      if (finalSource != null) {
-        this.mediaSource = finalSource;
-        int currentWindowIndex = player.getCurrentMediaItemIndex();
-        long pos = player.getCurrentPosition();
-        if (pos < 0)
-          pos = 0;
-        player.setMediaSource(this.mediaSource);
-        player.seekTo(currentWindowIndex, pos);
-        // player.setVideoSurface(surface);
-        player.prepare();
-      }
+      if (finalSource != null) setSourceKeepingPosition(finalSource);
     }
 
+  }
+
+  private void setSourceKeepingPosition(final MediaSource source) {
+    this.mediaSource = source;
+    final int windowIndex = player.getCurrentMediaItemIndex();
+    final long currentPosition = player.getCurrentPosition();
+    final long position = Math.max(0, currentPosition);
+    player.setMediaSource(source);
+    player.seekTo(windowIndex, position);
+    player.prepare();
   }
 
   private void updateLoopingPlayer() {
@@ -1446,11 +1440,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   /// re-runs that choice after the output device changed.
   void reloadForAudioOutput() {
     if (player == null || mediaSource == null || processingState == ProcessingState.none) return;
-    final int windowIndex = player.getCurrentMediaItemIndex();
-    final long position = Math.max(0, player.getCurrentPosition());
-    player.setMediaSource(mediaSource);
-    player.seekTo(windowIndex, position);
-    player.prepare();
+    setSourceKeepingPosition(mediaSource);
   }
 
   /// true when it was playing, so a usb claim can resume it.
