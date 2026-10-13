@@ -7,7 +7,7 @@ import java.util.Map;
 /// process-wide, every player's processor reads the latest one. effect types match the native engine's indices.
 final class SoundEffects {
 
-  static final int COUNT = 9;
+  static final int COUNT = 10;
 
   private static volatile Config config = Config.NONE;
 

@@ -22,11 +22,12 @@ constexpr int kCompressor = 5;
 constexpr int kInstrumental = 6;
 constexpr int kBassEnhancer = 7;
 constexpr int kTubeWarmth = 8;
-constexpr int kEffectCount = 9;
+constexpr int kReverb = 9;
+constexpr int kEffectCount = 10;
 
 // -- source shaping first, modulation and time based effects next, the headphone stages last
 constexpr int kProcessingOrder[kEffectCount] = {
-    kInstrumental, kCompressor, kBassEnhancer, kTubeWarmth, kChorus, kEcho, kAutoPan, kVirtualSurround, kCrossfeed,
+    kInstrumental, kCompressor, kBassEnhancer, kTubeWarmth, kChorus, kEcho, kReverb, kAutoPan, kVirtualSurround, kCrossfeed,
 };
 
 constexpr int kBlockFrames = 64;
@@ -367,6 +368,110 @@ class Echo {
   double delays_[2] = {0.0, 0.0};
 };
 
+/// Freeverb (Jezar at Dreampoint), eight damped combs and four allpasses per side, the right side's lengths spread a little
+/// so both tails decorrelate. the lows are kept out of the tail so it doesn't get muddy, a bigger intensity is a bigger room.
+class Reverb {
+ public:
+  void prepare(double rate) {
+    constexpr int kCombLengths[kCombs] = {1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617};
+    constexpr int kAllpassLengths[kAllpasses] = {556, 441, 341, 225};
+    constexpr int kStereoSpread = 23;
+    const double scale = rate / 44100.0;
+    for (int s = 0; s < 2; s++) {
+      const int spread = s * kStereoSpread;
+      for (int i = 0; i < kCombs; i++) combs_[s][i].prepare(static_cast<int>((kCombLengths[i] + spread) * scale), rate);
+      for (int i = 0; i < kAllpasses; i++) allpasses_[s][i].prepare(static_cast<int>((kAllpassLengths[i] + spread) * scale));
+    }
+    inputHighPass_.highPass(200.0, 0.7071, rate);
+  }
+
+  void clear() {
+    for (auto& side : combs_) {
+      for (Comb& comb : side) comb.clear();
+    }
+    for (auto& side : allpasses_) {
+      for (Allpass& allpass : side) allpass.clear();
+    }
+    inputHighPass_.clear();
+  }
+
+  void process(float* x, int frames, int channels, Ramp ramp, float intensity) {
+    constexpr float kInputGain = 0.015f;
+    constexpr float kAntiDenormal = 1e-18f;
+    const int sides = std::min(channels, 2);
+    const float roomSize = 0.5f + 0.45f * intensity;
+    const float feedback = 0.7f + 0.28f * roomSize;
+    const double wet = 0.8 * intensity;
+    const double dryCut = 0.2 * intensity;
+    float mix = ramp.start;
+    for (int f = 0; f < frames; f++, x += channels) {
+      mix += ramp.step;
+      const double summed = sides == 2 ? x[0] + x[1] : 2.0 * x[0];
+      const float withoutLows = static_cast<float>(inputHighPass_.run(summed));
+      const float input = withoutLows * kInputGain + kAntiDenormal;
+      for (int s = 0; s < sides; s++) {
+        float tail = 0.0f;
+        for (Comb& comb : combs_[s]) tail += comb.run(input, feedback);
+        for (Allpass& allpass : allpasses_[s]) tail = allpass.run(tail);
+        x[s] = static_cast<float>(x[s] + mix * (wet * tail - dryCut * x[s]));
+      }
+    }
+  }
+
+ private:
+  static constexpr int kCombs = 8;
+  static constexpr int kAllpasses = 4;
+
+  struct Comb {
+    std::vector<float> buffer;
+    size_t index = 0;
+    OnePoleLowPass damping;
+
+    void prepare(int length, double rate) {
+      buffer.assign(std::max(length, 1), 0.0f);
+      index = 0;
+      damping.set(8000.0, rate);
+      damping.clear();
+    }
+
+    void clear() {
+      std::fill(buffer.begin(), buffer.end(), 0.0f);
+      damping.clear();
+    }
+
+    float run(float input, float feedback) {
+      const float output = buffer[index];
+      const double damped = damping.run(output);
+      buffer[index] = static_cast<float>(input + damped * feedback);
+      if (++index == buffer.size()) index = 0;
+      return output;
+    }
+  };
+
+  struct Allpass {
+    std::vector<float> buffer;
+    size_t index = 0;
+
+    void prepare(int length) {
+      buffer.assign(std::max(length, 1), 0.0f);
+      index = 0;
+    }
+
+    void clear() { std::fill(buffer.begin(), buffer.end(), 0.0f); }
+
+    float run(float input) {
+      const float delayed = buffer[index];
+      buffer[index] = input + delayed * 0.5f;
+      if (++index == buffer.size()) index = 0;
+      return delayed - input;
+    }
+  };
+
+  Comb combs_[2][kCombs];
+  Allpass allpasses_[2][kAllpasses];
+  Biquad inputHighPass_;
+};
+
 /// moves the middle of the stereo image around the head in an 8 second circle, the sides stay put a little.
 class AutoPan {
  public:
@@ -560,6 +665,7 @@ class SoundEffects {
     tubeWarmth_.prepare(rate_, channels_);
     chorus_.prepare(rate_);
     echo_.prepare(rate_);
+    reverb_.prepare(rate_);
     autoPan_.prepare(rate_);
     virtualSurround_.prepare(rate_);
     crossfeed_.prepare(rate_);
@@ -612,6 +718,7 @@ class SoundEffects {
   TubeWarmth tubeWarmth_;
   Chorus chorus_;
   Echo echo_;
+  Reverb reverb_;
   AutoPan autoPan_;
   VirtualSurround virtualSurround_;
   Crossfeed crossfeed_;
@@ -661,6 +768,9 @@ class SoundEffects {
       case kEcho:
         echo_.process(x, frames, channels_, ramp, intensity);
         break;
+      case kReverb:
+        reverb_.process(x, frames, channels_, ramp, intensity);
+        break;
       case kAutoPan:
         autoPan_.process(x, frames, channels_, ramp, intensity);
         break;
@@ -695,6 +805,9 @@ class SoundEffects {
       case kEcho:
         echo_.clear();
         break;
+      case kReverb:
+        reverb_.clear();
+        break;
       case kAutoPan:
         autoPan_.clear();
         break;
@@ -709,7 +822,7 @@ class SoundEffects {
     }
   }
 
-  /// effects that add energy (bass, echo, surround) can push peaks past full scale, caught here instead of clipping.
+  /// effects that add energy (bass, echo, reverb, surround) can push peaks past full scale, caught here instead of clipping.
   void limit(float* x, int frames) {
     double gain = limiterGain_;
     for (int f = 0; f < frames; f++, x += channels_) {

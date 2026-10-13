@@ -1880,6 +1880,7 @@ enum SoundEffectTypeMessage {
   instrumental,
   bassEnhancer,
   tubeWarmth,
+  reverb,
 }
 
 /// A change of the output devices or of the bit-perfect status.
