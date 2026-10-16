@@ -57,6 +57,11 @@ final class UsbAudioStream {
     nativeSetPlaying(handle, playing);
   }
 
+  /// blocks until the packets a pause discarded are back, the interface can't be reselected under them.
+  void waitUntilStopped() {
+    nativeWaitUntilStopped(handle);
+  }
+
   void endOfStream() {
     nativeEndOfStream(handle);
   }
@@ -88,6 +93,8 @@ final class UsbAudioStream {
   private static native int nativeWriteArray(long handle, byte[] array, int offset, int length);
 
   private static native void nativeSetPlaying(long handle, boolean playing);
+
+  private static native void nativeWaitUntilStopped(long handle);
 
   private static native void nativeEndOfStream(long handle);
 

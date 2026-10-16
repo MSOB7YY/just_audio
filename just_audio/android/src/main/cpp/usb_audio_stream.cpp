@@ -10,6 +10,7 @@
 #include <android/log.h>
 #include <linux/usbdevice_fs.h>
 #include <sys/ioctl.h>
+#include <poll.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
 
@@ -41,6 +42,8 @@ constexpr int kRingDurationMs = 250;
 constexpr int kUrgentAudioPriority = -19;
 constexpr int kUnknownFeedbackShift = INT_MIN;
 constexpr int64_t kStallReportIntervalUs = 1000000;
+constexpr int kStopWaitMs = 500;
+constexpr int kReleaseDrainMs = 2000;
 
 using Clock = std::chrono::steady_clock;
 
@@ -162,6 +165,11 @@ class UsbAudioStream {
     wake();
   }
 
+  void waitUntilStopped() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    stoppedCondition_.wait_for(lock, std::chrono::milliseconds(kStopWaitMs), [this] { return isStopped_.load(); });
+  }
+
   void endOfStream() {
     endOfStream_.store(true);
     wake();
@@ -226,6 +234,7 @@ class UsbAudioStream {
   std::atomic<bool> playing_{false};
   std::atomic<bool> endOfStream_{false};
   std::atomic<bool> released_{false};
+  std::atomic<bool> isStopped_{true};
   std::atomic<int> errorCode_{0};
 
   StallStats stallStats_;
@@ -235,6 +244,7 @@ class UsbAudioStream {
 
   std::mutex mutex_;
   std::condition_variable condition_;
+  std::condition_variable stoppedCondition_;
   std::thread thread_;
 
   /// usbfs memory is handed to the controller as is, a plain buffer costs a kernel allocation and a copy on every submit.
@@ -339,6 +349,7 @@ class UsbAudioStream {
       slot.audioFrames = audioFrames;
       slot.inFlight = true;
       inFlight_++;
+      isStopped_.store(false);
       submitIndex_ = (submitIndex_ + 1) % kUrbCount;
       if (!feedbackInFlight_) submitFeedback();
     }
@@ -496,6 +507,11 @@ class UsbAudioStream {
       isRewinding_ = false;
       hasReapTime_ = false;
     }
+    if (inFlight_ == 0) {
+      { std::lock_guard<std::mutex> lock(mutex_); }
+      isStopped_.store(true);
+      stoppedCondition_.notify_all();
+    }
   }
 
   void trackReapGap() {
@@ -555,8 +571,10 @@ class UsbAudioStream {
     }
   }
 
+  /// every urb is back before its memory goes, discarded ones return within a frame or two.
   void drainAfterRelease() {
-    for (int attempt = 0; attempt < 200 && (inFlight_ > 0 || feedbackInFlight_); attempt++) {
+    const Clock::time_point deadline = Clock::now() + std::chrono::milliseconds(kReleaseDrainMs);
+    while (inFlight_ > 0 || feedbackInFlight_) {
       usbdevfs_urb *completed = nullptr;
       if (ioctl(fd_, USBDEVFS_REAPURBNDELAY, &completed) == 0 && completed != nullptr) {
         if (completed == feedbackUrb_) {
@@ -571,8 +589,9 @@ class UsbAudioStream {
         }
         continue;
       }
-      if (errno == ENODEV) return;
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      if (errno != EAGAIN || Clock::now() >= deadline) return;
+      pollfd waiter{fd_, POLLOUT, 0};
+      poll(&waiter, 1, 10);
     }
   }
 };
@@ -618,6 +637,10 @@ JNIEXPORT jint JNICALL Java_com_ryanheise_just_1audio_UsbAudioStream_nativeWrite
 
 JNIEXPORT void JNICALL Java_com_ryanheise_just_1audio_UsbAudioStream_nativeSetPlaying(JNIEnv *, jclass, jlong handle, jboolean playing) {
   reinterpret_cast<UsbAudioStream *>(handle)->setPlaying(playing == JNI_TRUE);
+}
+
+JNIEXPORT void JNICALL Java_com_ryanheise_just_1audio_UsbAudioStream_nativeWaitUntilStopped(JNIEnv *, jclass, jlong handle) {
+  reinterpret_cast<UsbAudioStream *>(handle)->waitUntilStopped();
 }
 
 JNIEXPORT void JNICALL Java_com_ryanheise_just_1audio_UsbAudioStream_nativeEndOfStream(JNIEnv *, jclass, jlong handle) {

@@ -54,7 +54,6 @@ final class UsbAudioDevice {
   private final int initialMute;
 
   @Nullable private UsbAudioDescriptors.Format activeFormat;
-  private int activeRate;
   private int appliedVolume = Integer.MIN_VALUE;
   private boolean appliedMute;
   private float playerGain = 1f;
@@ -214,9 +213,9 @@ final class UsbAudioDevice {
     return max;
   }
 
-  /// switches the interface and the clock only when they changed, so gapless tracks don't reopen the stream.
-  synchronized boolean configure(UsbAudioDescriptors.Format format, int sampleRate) {
-    if (format == activeFormat && sampleRate == activeRate) return true;
+  /// every start after a stop reselects the interface like snd-usb-audio's prepare: it restarts the dac's stream engine and the
+  /// host controller's endpoint ring, packets merely resuming leave some dacs silent (snapshots#121).
+  synchronized boolean start(UsbAudioDescriptors.Format format, int sampleRate) {
     final UsbAudioDescriptors.Format previous = activeFormat;
     if (previous != null && previous.interfaceNumber != format.interfaceNumber) setAltSetting(previous.interfaceNumber, 0);
     if (!setAltSetting(format.interfaceNumber, 0)) return false;
@@ -224,7 +223,6 @@ final class UsbAudioDevice {
     if (!setAltSetting(format.interfaceNumber, format.altSetting)) return false;
     waitForClock(format);
     activeFormat = format;
-    activeRate = sampleRate;
     reapplyVolume();
     return true;
   }

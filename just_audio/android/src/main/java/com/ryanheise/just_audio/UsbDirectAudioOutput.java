@@ -78,10 +78,12 @@ final class UsbDirectAudioOutput implements AudioOutput {
     return format.channels;
   }
 
-  /// the dac switches format and clock here rather than on creation, so a paused output never retunes it under another one.
+  /// the dac is set up here rather than on creation, so a paused output never retunes it under another one.
   @Override
   public void play() {
-    if (!device.configure(format, config.sampleRate)) {
+    if (isPlaying) return;
+    stream.waitUntilStopped();
+    if (!device.start(format, config.sampleRate)) {
       fail();
       return;
     }
