@@ -8,15 +8,19 @@ public class VideoOptions {
   MediaSource source;
   Boolean videoOnly;
   Boolean loop;
+  long startOffsetUs;
 
-  public VideoOptions(MediaSource source, Boolean videoOnly, Boolean loop) {
+  public VideoOptions(MediaSource source, Boolean videoOnly, Boolean loop, long startOffsetUs) {
     this.source = source;
     this.videoOnly = videoOnly;
     this.loop = loop;
+    this.startOffsetUs = startOffsetUs;
   }
 
   @SuppressWarnings("unchecked")
   public static VideoOptions fromMap(Map<?, ?> map, MediaSource source) {
-    return new VideoOptions(source, (Boolean) map.get("videoOnly"), (Boolean) map.get("loop"));
+    final Number startOffsetMs = (Number) map.get("startOffsetMS");
+    final long startOffsetUs = startOffsetMs == null ? 0 : startOffsetMs.longValue() * 1000;
+    return new VideoOptions(source, (Boolean) map.get("videoOnly"), (Boolean) map.get("loop"), startOffsetUs);
   }
 }

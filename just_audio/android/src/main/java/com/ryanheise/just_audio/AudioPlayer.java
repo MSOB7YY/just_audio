@@ -1177,7 +1177,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         this.mediaSource = audioSource;
         setLoopPlayer = true;
       } else {
-        this.mediaSource = new MergingMediaSource(audioSource, videoOptions.source);
+        this.mediaSource = mergeWithVideo(audioSource, videoOptions);
       }
     } else {
       this.mediaSource = audioSource;
@@ -1217,7 +1217,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       MediaSource finalSource = null;
       if (videoSource != null) {
         // -- null when freed, nothing to merge with until the next load.
-        if (this.audioSource != null) finalSource = new MergingMediaSource(this.audioSource, videoSource);
+        if (this.audioSource != null) finalSource = mergeWithVideo(this.audioSource, videoOptions);
       } else {
         // null video, remove if was set before
         if (this.mediaSource instanceof MergingMediaSource) {
@@ -1233,6 +1233,15 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       if (finalSource != null) setSourceKeepingPosition(finalSource);
     }
 
+  }
+
+  private static MediaSource mergeWithVideo(final MediaSource audioSource, final VideoOptions videoOptions) {
+    final long videoStartOffsetUs = videoOptions.startOffsetUs;
+    if (videoStartOffsetUs <= 0) return new MergingMediaSource(audioSource, videoOptions.source);
+
+    // -- adjusting period offsets lines the clipped video up with the audio start.
+    final MediaSource clippedVideoSource = new ClippingMediaSource.Builder(videoOptions.source).setStartPositionUs(videoStartOffsetUs).build();
+    return new MergingMediaSource(true, false, audioSource, clippedVideoSource);
   }
 
   private void setSourceKeepingPosition(final MediaSource source) {

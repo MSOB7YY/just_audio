@@ -781,17 +781,20 @@ class VideoLoadRequest {
   final SourceMessage videoSourceMessage;
   final bool videoOnly;
   final bool videoLoop;
+  final int? videoStartOffsetMS;
 
   const VideoLoadRequest({
     required this.videoSourceMessage,
     required this.videoOnly,
     required this.videoLoop,
+    this.videoStartOffsetMS,
   });
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
         'videoSource': videoSourceMessage.toMap(),
         'videoOnly': videoOnly,
         'loop': videoLoop,
+        'startOffsetMS': videoStartOffsetMS,
       };
 }
 

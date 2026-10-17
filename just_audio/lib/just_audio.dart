@@ -905,6 +905,7 @@ class AudioPlayer {
               videoSourceMessage: video.source._toMessage(),
               videoLoop: video.loop,
               videoOnly: video.videoOnly,
+              videoStartOffsetMS: video.startOffsetMS,
             ),
     );
   }
@@ -975,6 +976,7 @@ class AudioPlayer {
                 videoSourceMessage: videoSource.source._toMessage(),
                 videoLoop: videoSource.loop,
                 videoOnly: videoSource.videoOnly,
+                videoStartOffsetMS: videoSource.startOffsetMS,
               ),
         initialPosition: initialSeekValues?.position,
         initialIndex: initialSeekValues?.index,
@@ -2369,11 +2371,15 @@ class VideoSourceOptions {
   /// Duration of [source], only needed by players that build the looping timeline themselves.
   final int? durationMS;
 
+  /// Position in [source] that plays along with the start of the audio. Ignored with [videoOnly] or [loop].
+  final int? startOffsetMS;
+
   const VideoSourceOptions({
     required this.source,
     required this.videoOnly,
     required this.loop,
     this.durationMS,
+    this.startOffsetMS,
   });
 
   Map<dynamic, dynamic> toMap() => {
