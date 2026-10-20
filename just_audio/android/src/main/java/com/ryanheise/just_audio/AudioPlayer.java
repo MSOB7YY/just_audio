@@ -1895,7 +1895,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   }
 
   private void abortExistingConnection() {
-    sendError("abort", "Connection aborted");
+    // -- a failed load stays at loading with nothing pending
+    if (prepareResult == null) return;
+    prepareResult.error("abort", "Connection aborted", null);
+    prepareResult = null;
   }
 
   // Dart can't distinguish between int sizes so
