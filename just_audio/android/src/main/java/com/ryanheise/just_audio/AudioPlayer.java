@@ -138,9 +138,30 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private RendererTier rendererTier = RendererTier.HW;
   private boolean didFallbackForItem = false;
 
+  // -- vendor lossless decoders can label 24-bit output as float (static noise), platform and extension decoders are exact.
+  private static final MediaCodecSelector NO_VENDOR_LOSSLESS_CODEC_SELECTOR = (mimeType, requiresSecureDecoder, requiresTunnelingDecoder) -> {
+    List<MediaCodecInfo> infos = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
+    if (!isLosslessAudio(mimeType)) return infos;
+    List<MediaCodecInfo> platformInfos = new ArrayList<>(infos.size());
+    for (MediaCodecInfo info : infos) if (!info.vendor) platformInfos.add(info);
+    return platformInfos;
+  };
+
+  private static boolean isLosslessAudio(String mimeType) {
+    switch (mimeType) {
+      case MimeTypes.AUDIO_FLAC:
+      case MimeTypes.AUDIO_ALAC:
+      case MimeTypes.AUDIO_APE:
+      case MimeTypes.AUDIO_WAVPACK:
+        return true;
+      default:
+        return false;
+    }
+  }
+
   // -- the SW tier puts software codecs first, hardware ones can hang without ever reporting an error.
   private static final MediaCodecSelector SOFTWARE_FIRST_CODEC_SELECTOR = (mimeType, requiresSecureDecoder, requiresTunnelingDecoder) -> {
-    List<MediaCodecInfo> infos = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
+    List<MediaCodecInfo> infos = NO_VENDOR_LOSSLESS_CODEC_SELECTOR.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
     List<MediaCodecInfo> sorted = new ArrayList<>(infos.size());
     for (MediaCodecInfo info : infos) if (info.softwareOnly) sorted.add(info);
     for (MediaCodecInfo info : infos) if (!info.softwareOnly) sorted.add(info);
@@ -1407,7 +1428,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
               .build();
         }
       }.setExtensionRendererMode(rendererMode)
-          .setMediaCodecSelector(rendererTier == RendererTier.SW ? SOFTWARE_FIRST_CODEC_SELECTOR : MediaCodecSelector.DEFAULT)
+          .setMediaCodecSelector(rendererTier == RendererTier.SW ? SOFTWARE_FIRST_CODEC_SELECTOR : NO_VENDOR_LOSSLESS_CODEC_SELECTOR)
           .setEnableDecoderFallback(true);
 
       builder.setRenderersFactory(renderersFactory);
