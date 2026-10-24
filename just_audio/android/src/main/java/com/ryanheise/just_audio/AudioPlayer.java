@@ -191,6 +191,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private MediaSource mediaSource;
   private MediaSource audioSource;
   private Integer currentIndex;
+  private final Timeline.Window liveWindowHolder = new Timeline.Window();
   private final Handler handler = new Handler(Looper.getMainLooper());
   private final Runnable bufferWatcher = new Runnable() {
     @Override
@@ -654,7 +655,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       player.seekTo(windowIndex, C.TIME_UNSET);
       initialIndex = null;
     }
-    if (updateCurrentIndex()) {
+    final boolean didIndexChange = updateCurrentIndex();
+    // -- live windows slide on every playlist refresh, shifting the position
+    final boolean isLive = player.isCurrentMediaItemLive();
+    if (isLive) updatePosition();
+    if (didIndexChange || isLive) {
       broadcastImmediatePlaybackEvent();
     }
     if (player.getPlaybackState() == Player.STATE_ENDED) {
@@ -707,7 +712,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         ppLoopingPlayer(player.getPlayWhenReady());
         if (prepareResult != null) {
           Map<String, Object> response = new HashMap<>();
-          response.put("duration", getDuration() == C.TIME_UNSET ? null : (1000 * getDuration()));
+          final boolean hasDuration = getDuration() != C.TIME_UNSET && !player.isCurrentMediaItemLive();
+          response.put("duration", hasDuration ? (1000 * getDuration()) : null);
           prepareResult.success(response);
           prepareResult = null;
           if (pendingAudioAttributes != null) {
@@ -1602,7 +1608,17 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     event.put("currentIndex", currentIndex);
     event.put("androidAudioSessionId", audioSessionId);
     event.put("autoTransition", autoTransition);
+    if (duration != null) putLiveWindow(event);
     return event;
+  }
+
+  private void putLiveWindow(Map<String, Object> event) {
+    if (!player.isCurrentMediaItemLive()) return;
+    player.getCurrentTimeline().getWindow(player.getCurrentMediaItemIndex(), liveWindowHolder);
+    final long liveEdgeUs = liveWindowHolder.getDefaultPositionUs();
+    if (liveEdgeUs == C.TIME_UNSET) return;
+    event.put("liveEdge", liveEdgeUs);
+    event.put("liveWindowOffset", liveWindowHolder.getPositionInFirstPeriodUs());
   }
 
   // Broadcast the pending playback event if it was set.

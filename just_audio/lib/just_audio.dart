@@ -140,6 +140,7 @@ class AudioPlayer {
   final _playbackEventSubject = BehaviorSubject<PlaybackEvent>(sync: true);
   Future<Duration?>? _durationFuture;
   final _durationSubject = BehaviorSubject<Duration?>();
+  final _liveWindowSubject = BehaviorSubject<LiveWindow?>.seeded(null);
   final _processingStateSubject = BehaviorSubject<ProcessingState>();
   final _playingSubject = BehaviorSubject.seeded(false);
   final _volumeSubject = BehaviorSubject.seeded(1.0);
@@ -436,6 +437,12 @@ class AudioPlayer {
   /// The duration of the current audio.
   Stream<Duration?> get durationStream => _durationSubject.stream;
 
+  /// The seekable window of the current live item, or `null` if it's not live.
+  LiveWindow? get liveWindow => _playbackEvent.liveWindow;
+
+  /// The seekable window of the current live item, or `null` if it's not live.
+  Stream<LiveWindow?> get liveWindowStream => _liveWindowSubject.stream;
+
   /// The current [ProcessingState].
   ProcessingState get processingState => _playbackEvent.processingState;
 
@@ -692,6 +699,8 @@ class AudioPlayer {
 
     Duration duration() => this.duration ?? Duration.zero;
     Duration step() {
+      // -- a live window length says nothing about how fast the bar moves
+      if (_playbackEvent.liveWindow != null) return maxPeriod;
       var s = duration() ~/ steps;
       if (s < minPeriod) s = minPeriod;
       if (s > maxPeriod) s = maxPeriod;
@@ -1272,7 +1281,7 @@ class AudioPlayer {
           _seeking = true;
           final prevPlaybackEvent = _playbackEvent;
           _playbackEvent = prevPlaybackEvent.copyWith(
-            updatePosition: position,
+            updatePosition: position ?? prevPlaybackEvent.liveWindow?.edge,
             updateTime: DateTime.now(),
           );
           _playbackEventSubject.add(_playbackEvent);
@@ -1390,6 +1399,7 @@ class AudioPlayer {
 
     await [
       _durationSubject.close,
+      _liveWindowSubject.close,
       _processingStateSubject.close,
       _bufferedPositionSubject.close,
       _icyMetadataSubject.close,
@@ -1496,6 +1506,14 @@ class AudioPlayer {
         _platformPlaying = message.playing;
         var duration = message.duration;
         var index = message.currentIndex ?? currentIndex;
+        final liveEdge = message.liveEdge;
+        final liveWindow = liveEdge == null
+            ? null
+            : LiveWindow(
+                start: Duration.zero,
+                edge: liveEdge,
+                offset: message.liveWindowOffset ?? Duration.zero,
+              );
         if (index != null && sequence != null && index < sequence!.length) {
           if (duration == null) {
             duration = sequence![index].duration;
@@ -1526,6 +1544,7 @@ class AudioPlayer {
           currentIndex: index,
           androidAudioSessionId: message.androidAudioSessionId,
           autoTransition: message.autoTransition,
+          liveWindow: liveWindow,
         );
         _durationFuture = Future.value(playbackEvent.duration);
         if (playbackEvent == _playbackEvent) {
@@ -1533,6 +1552,9 @@ class AudioPlayer {
         }
         if (playbackEvent.duration != _playbackEvent.duration) {
           _durationSubject.add(playbackEvent.duration);
+        }
+        if (playbackEvent.liveWindow != _playbackEvent.liveWindow) {
+          _liveWindowSubject.add(playbackEvent.liveWindow);
         }
         final oldPlaybackEvent = _playbackEvent;
         _playbackEventSubject.add(_playbackEvent = playbackEvent);
@@ -1803,6 +1825,9 @@ class PlaybackEvent {
 
   final bool? autoTransition;
 
+  /// The seekable window if the current item is live.
+  final LiveWindow? liveWindow;
+
   PlaybackEvent({
     this.processingState = ProcessingState.idle,
     DateTime? updateTime,
@@ -1816,6 +1841,7 @@ class PlaybackEvent {
     this.currentIndex,
     this.androidAudioSessionId,
     this.autoTransition,
+    this.liveWindow,
   }) : updateTime = updateTime ?? DateTime.now();
 
   /// Returns a copy of this event with given properties replaced.
@@ -1832,6 +1858,7 @@ class PlaybackEvent {
     int? currentIndex,
     int? androidAudioSessionId,
     bool? autoTransition,
+    LiveWindow? liveWindow,
   }) =>
       PlaybackEvent(
         processingState: processingState ?? this.processingState,
@@ -1847,6 +1874,7 @@ class PlaybackEvent {
         androidAudioSessionId:
             androidAudioSessionId ?? this.androidAudioSessionId,
         autoTransition: autoTransition ?? this.autoTransition,
+        liveWindow: liveWindow ?? this.liveWindow,
       );
 
   @override
@@ -1863,6 +1891,7 @@ class PlaybackEvent {
         currentIndex,
         androidAudioSessionId,
         autoTransition,
+        liveWindow,
       );
 
   @override
@@ -1880,11 +1909,43 @@ class PlaybackEvent {
       subtitleText == other.subtitleText &&
       currentIndex == other.currentIndex &&
       androidAudioSessionId == other.androidAudioSessionId &&
-      autoTransition == other.autoTransition;
+      autoTransition == other.autoTransition &&
+      liveWindow == other.liveWindow;
 
   @override
   String toString() =>
       "{processingState=$processingState, updateTime=$updateTime, updatePosition=$updatePosition, bufferedPosition=$bufferedPosition, duration=$duration, currentIndex=$currentIndex, autoTransition=$autoTransition}";
+}
+
+/// The seekable range of a live item, in the same timebase as [AudioPlayer.position].
+class LiveWindow {
+  /// The earliest position that can be seeked to.
+  final Duration start;
+
+  /// The position of the live edge, seeking to `null` lands here.
+  final Duration edge;
+
+  /// Grows as the window slides, `position + offset` never jumps back on a slide.
+  final Duration offset;
+
+  const LiveWindow({
+    required this.start,
+    required this.edge,
+    required this.offset,
+  });
+
+  @override
+  int get hashCode => Object.hash(start, edge, offset);
+
+  @override
+  bool operator ==(Object other) =>
+      other is LiveWindow &&
+      start == other.start &&
+      edge == other.edge &&
+      offset == other.offset;
+
+  @override
+  String toString() => "{start=$start, edge=$edge, offset=$offset}";
 }
 
 /// Enumerates the different processing states of a player.

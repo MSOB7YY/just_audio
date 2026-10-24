@@ -481,6 +481,12 @@ class PlaybackEventMessage {
   final bool? autoTransition;
   final bool? playing;
 
+  /// Live items only, the default position the player lands on when seeking to `null`.
+  final Duration? liveEdge;
+
+  /// Live items only, how far the window slid since the stream started.
+  final Duration? liveWindowOffset;
+
   const PlaybackEventMessage({
     required this.processingState,
     required this.updateTime,
@@ -495,6 +501,8 @@ class PlaybackEventMessage {
     this.androidAudioSessionId,
     this.autoTransition,
     this.playing,
+    this.liveEdge,
+    this.liveWindowOffset,
   });
 
   static PlaybackEventMessage fromMap(Map<dynamic, dynamic> map) =>
@@ -524,6 +532,12 @@ class PlaybackEventMessage {
         androidAudioSessionId: map['androidAudioSessionId'] as int?,
         autoTransition: map['autoTransition'] as bool?,
         playing: map['playing'] as bool?,
+        liveEdge: map['liveEdge'] == null
+            ? null
+            : Duration(microseconds: map['liveEdge'] as int),
+        liveWindowOffset: map['liveWindowOffset'] == null
+            ? null
+            : Duration(microseconds: map['liveWindowOffset'] as int),
       );
 }
 
