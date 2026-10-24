@@ -73,11 +73,12 @@ struct StallStats {
   int64_t starvedFrames = 0;
   int64_t clampedFrames = 0;
   int missedPackets = 0;
+  int rejectedFeedback = 0;
   int64_t longestReapGapUs = 0;
   int64_t slowestSubmitUs = 0;
 
   bool hasStalls(int64_t urbDurationUs) const {
-    return starvedFrames > 0 || clampedFrames > 0 || missedPackets > 0 || longestReapGapUs > urbDurationUs * 3;
+    return starvedFrames > 0 || clampedFrames > 0 || missedPackets > 0 || rejectedFeedback > 0 || longestReapGapUs > urbDurationUs * 3;
   }
 };
 
@@ -120,6 +121,7 @@ class UsbAudioStream {
     // -- packets are clamped to what the endpoint takes, like snd-usb-audio does, so a tightly sized endpoint still streams
     maxFramesPerPacket_ = maxPacketBytes_ / bytesPerFrame_;
     if (static_cast<int>(std::ceil(nominalFramesPerPacket_)) > maxFramesPerPacket_) return false;
+    maxFeedbackFramesPerPacket_ = std::min(nominalFramesPerPacket_ * 1.5, static_cast<double>(maxFramesPerPacket_));
     const size_t urbSize = sizeof(usbdevfs_urb) + packetsPerUrb_ * sizeof(usbdevfs_iso_packet_desc);
     const size_t bufferSize = static_cast<size_t>(packetsPerUrb_) * maxFramesPerPacket_ * bytesPerFrame_;
     for (Slot &slot : slots_) {
@@ -205,6 +207,7 @@ class UsbAudioStream {
   const int maxPacketBytes_;
   const double nominalFramesPerPacket_;
   int maxFramesPerPacket_ = 0;
+  double maxFeedbackFramesPerPacket_ = 0.0;
   double framesPerPacket_;
   double frameAccumulator_ = 0.0;
   int packetsPerUrb_ = 1;
@@ -525,9 +528,11 @@ class UsbAudioStream {
     const int64_t sinceReportUs = std::chrono::duration_cast<std::chrono::microseconds>(now - lastStallReportTime_).count();
     if (sinceReportUs < kStallReportIntervalUs) return;
     if (stallStats_.hasStalls(urbDurationUs_)) {
-      LOGW("stalls: starved %lld frames, clamped %lld frames, missed %d packets, longest reap gap %lld us, slowest submit %lld us",
+      LOGW("stalls: starved %lld frames, clamped %lld frames, missed %d packets, rejected %d feedback values (%.4f frames/packet), "
+           "longest reap gap %lld us, slowest submit %lld us",
            static_cast<long long>(stallStats_.starvedFrames), static_cast<long long>(stallStats_.clampedFrames), stallStats_.missedPackets,
-           static_cast<long long>(stallStats_.longestReapGapUs), static_cast<long long>(stallStats_.slowestSubmitUs));
+           stallStats_.rejectedFeedback, framesPerPacket_, static_cast<long long>(stallStats_.longestReapGapUs),
+           static_cast<long long>(stallStats_.slowestSubmitUs));
     }
     stallStats_ = StallStats();
     lastStallReportTime_ = now;
@@ -535,10 +540,13 @@ class UsbAudioStream {
 
   /// the format differs between devices (10.14 or 16.16, per frame, microframe or packet), always a power of two apart, so like
   /// snd-usb-audio the first value is shifted until it lands near the nominal rate, and that shift sticks while values stay plausible.
+  /// plausible is snd-usb-audio's range too (-12.5% up to +50% or a full packet): a dac refilling its fifo can ask for well over the
+  /// nominal rate, refusing that keeps it starved and crackling until the next restart (snapshots#121).
   void onFeedback(const usbdevfs_urb *urb) {
-    if (urb->status != 0 || urb->iso_frame_desc[0].actual_length < 3) return;
+    const unsigned int length = urb->iso_frame_desc[0].actual_length;
+    if (urb->status != 0 || urb->iso_frame_desc[0].status != 0 || length < 3) return;
     uint32_t raw = feedbackBuffer_[0] | (feedbackBuffer_[1] << 8) | (feedbackBuffer_[2] << 16);
-    if (urb->iso_frame_desc[0].actual_length >= 4) raw |= static_cast<uint32_t>(feedbackBuffer_[3]) << 24;
+    if (length >= 4) raw |= static_cast<uint32_t>(feedbackBuffer_[3] & 0x0F) << 24;
     if (raw == 0) return;
     double framesPerPacket = raw / 65536.0;
     if (feedbackShift_ == kUnknownFeedbackShift) {
@@ -556,10 +564,11 @@ class UsbAudioStream {
     } else {
       framesPerPacket = std::ldexp(framesPerPacket, feedbackShift_);
     }
-    const bool isPlausible = framesPerPacket >= nominalFramesPerPacket_ * 0.875 && framesPerPacket <= nominalFramesPerPacket_ * 1.125;
+    const bool isPlausible = framesPerPacket >= nominalFramesPerPacket_ * 0.875 && framesPerPacket <= maxFeedbackFramesPerPacket_;
     if (isPlausible) {
       framesPerPacket_ = framesPerPacket;
     } else {
+      stallStats_.rejectedFeedback++;
       feedbackShift_ = kUnknownFeedbackShift;
     }
   }

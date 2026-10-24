@@ -263,7 +263,7 @@ final class UsbAudioDevice {
   }
 
   /// a dac's range usually stops well above silence, what it can't attenuate is taken off float streams in software,
-  /// integer streams stay at its minimum. muting there instead would cut the sound off at the bottom of the range (#1265).
+  /// integer streams stay at its lowest audible step.
   private void applyHardwareGain() {
     final float residualGain = writeHardwareGain(playerGain * systemGain);
     for (UsbAudioStream stream : softwareGainStreams.keySet()) stream.setGain(residualGain);
@@ -277,7 +277,8 @@ final class UsbAudioDevice {
     final double db = mute ? range.min / 256.0 : 20.0 * Math.log10(gain);
     int value = (int) Math.round(db * 256.0);
     if (range.resolution > 0) value = range.min + Math.round((value - range.min) / (float) range.resolution) * range.resolution;
-    value = Math.max(range.min, Math.min(range.max, value));
+    final int lowestValue = mute ? range.min : range.audibleMin;
+    value = Math.max(lowestValue, Math.min(range.max, value));
     if (value != appliedVolume) {
       appliedVolume = value;
       if (!writeVolume(control, value)) Log.w(TAG, "volume write failed, value=" + value);
@@ -382,11 +383,19 @@ final class UsbAudioDevice {
     return false;
   }
 
+  /// like snd-usb-audio, a uac2 clock already at [sampleRate] isn't set again, so a restart on the same rate doesn't make the dac relock.
   private void setSampleRate(UsbAudioDescriptors.Format format, int sampleRate) {
     if (descriptors.uacVersion == 2) {
       if (format.clockSourceId < 0) return;
-      final byte[] data = {(byte) sampleRate, (byte) (sampleRate >> 8), (byte) (sampleRate >> 16), (byte) (sampleRate >> 24)};
       final int wIndex = (format.clockSourceId << 8) | descriptors.controlInterface;
+      final byte[] data = new byte[4];
+      final int read = connection.controlTransfer(REQUEST_TYPE_INTERFACE_IN, REQUEST_CUR, CONTROL_SAMPLING_FREQUENCY << 8, wIndex, data, 4, TIMEOUT_MS);
+      final boolean isAlreadyAtRate = read == 4 && readUnsigned32(data, 0) == sampleRate;
+      if (isAlreadyAtRate) return;
+      data[0] = (byte) sampleRate;
+      data[1] = (byte) (sampleRate >> 8);
+      data[2] = (byte) (sampleRate >> 16);
+      data[3] = (byte) (sampleRate >> 24);
       connection.controlTransfer(REQUEST_TYPE_INTERFACE_OUT, REQUEST_CUR, CONTROL_SAMPLING_FREQUENCY << 8, wIndex, data, 4, TIMEOUT_MS);
     } else {
       final boolean hasSeveralRates = format.discreteRates.length != 1;
@@ -609,14 +618,20 @@ final class UsbAudioDevice {
 
   /// 1/256 dB units.
   private static final class VolumeRange {
+    private static final int UNREPORTED_RESOLUTION = 256;
+
     final int min;
     final int max;
     final int resolution;
+    /// many dacs are silent at their minimum (snd-usb-audio's min_mute quirk), so playback never goes below the step above it (#1265).
+    final int audibleMin;
 
     private VolumeRange(int min, int max, int resolution) {
       this.min = min;
       this.max = max;
       this.resolution = resolution;
+      final int step = resolution > 0 ? resolution : UNREPORTED_RESOLUTION;
+      this.audibleMin = Math.min(max, min + step);
     }
 
     @Nullable
