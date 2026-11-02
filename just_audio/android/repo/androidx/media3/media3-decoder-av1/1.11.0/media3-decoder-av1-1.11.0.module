@@ -42,11 +42,11 @@
         {
           "name": "media3-decoder-av1-1.11.0.aar",
           "url": "media3-decoder-av1-1.11.0.aar",
-          "size": 2292954,
-          "sha512": "062b893703b89e77f43afdf2e1985192db9413f8c5c418603d1c2d0a9fda7de9dcd7fe717346f928be5027a6f3b29aa3cbd888cd6ffaf5d016a82a41b489b2ab",
-          "sha256": "e255344775ebe59b06cd54c0166b396941d0bb58d922e3b8aaa76c0848fd65f5",
-          "sha1": "171b25d55d72ae5bf94dedada2c9a7aa55b4f6f2",
-          "md5": "91e3aabbbe3cedd5d8df32860355fa50"
+          "size": 2296332,
+          "sha512": "a19efda4750c8ead0daaf3607ba8e1b17c007880b3e03d118979b4e0068f89e6d7ac07b6cfbf3026003424571d2a0dd037def6409030ad3c6b3b015a9b5d88dc",
+          "sha256": "b0e35cd15f71992d521001a929f5af082d611fdb6d758c62424e3547b04398ff",
+          "sha1": "ed5c48d5d2e56236e1c824654aa490bf90519478",
+          "md5": "eff94b719a281ddcac2974bcdcce7e3e"
         }
       ]
     },
@@ -92,11 +92,11 @@
         {
           "name": "media3-decoder-av1-1.11.0.aar",
           "url": "media3-decoder-av1-1.11.0.aar",
-          "size": 2292954,
-          "sha512": "062b893703b89e77f43afdf2e1985192db9413f8c5c418603d1c2d0a9fda7de9dcd7fe717346f928be5027a6f3b29aa3cbd888cd6ffaf5d016a82a41b489b2ab",
-          "sha256": "e255344775ebe59b06cd54c0166b396941d0bb58d922e3b8aaa76c0848fd65f5",
-          "sha1": "171b25d55d72ae5bf94dedada2c9a7aa55b4f6f2",
-          "md5": "91e3aabbbe3cedd5d8df32860355fa50"
+          "size": 2296332,
+          "sha512": "a19efda4750c8ead0daaf3607ba8e1b17c007880b3e03d118979b4e0068f89e6d7ac07b6cfbf3026003424571d2a0dd037def6409030ad3c6b3b015a9b5d88dc",
+          "sha256": "b0e35cd15f71992d521001a929f5af082d611fdb6d758c62424e3547b04398ff",
+          "sha1": "ed5c48d5d2e56236e1c824654aa490bf90519478",
+          "md5": "eff94b719a281ddcac2974bcdcce7e3e"
         }
       ]
     },
