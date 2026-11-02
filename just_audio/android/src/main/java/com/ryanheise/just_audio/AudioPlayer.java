@@ -171,6 +171,9 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   // -- a decoder that accepts the stream but never outputs keeps the player buffering with data available.
   private static final long STUCK_BUFFERING_MIN_BUFFERED_MS = 3000;
   private static final long STUCK_BUFFERING_TIMEOUT_MS = 8000;
+
+  // -- a hidden video track keeps its samples from the last keyframe, showing it again continues without resetting the audio muxed with it.
+  private static final boolean RETAIN_BACK_BUFFER_FROM_KEYFRAME = true;
   private long stuckBufferingSinceMs = 0;
 
   private String pendingAudioTrackId = null;
@@ -181,6 +184,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private TextureRegistry.SurfaceTextureEntry surfaceTextureEntry;
   private Surface surface;
   private VideoOptions videoOptions;
+  private boolean videoHidden;
+  private boolean videoInfoOutdated = false;
 
   private DefaultHttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory();
 
@@ -230,10 +235,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
   public AudioPlayer(final Context applicationContext, final BinaryMessenger messenger, final String id,
       Map<?, ?> audioLoadConfiguration, List<Object> rawAudioEffects,
-      boolean preferSWDecoders, TextureRegistry textureRegistry) {
+      boolean preferSWDecoders, TextureRegistry textureRegistry, boolean videoHidden) {
     this.context = applicationContext;
     this.outputManager = AudioOutputManager.get(applicationContext);
     this.rawAudioEffects = rawAudioEffects;
+    this.videoHidden = videoHidden;
     try {
       this.surfaceTextureEntry = textureRegistry.createSurfaceTexture();
       surface = new Surface(this.surfaceTextureEntry.surfaceTexture());
@@ -258,7 +264,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                 (int) ((getLong(loadControlMap.get("bufferForPlaybackDuration"))) / 1000),
                 (int) ((getLong(loadControlMap.get("bufferForPlaybackAfterRebufferDuration"))) / 1000))
             .setPrioritizeTimeOverSizeThresholds((Boolean) loadControlMap.get("prioritizeTimeOverSizeThresholds"))
-            .setBackBuffer((int) ((getLong(loadControlMap.get("backBufferDuration"))) / 1000), false);
+            .setBackBuffer((int) ((getLong(loadControlMap.get("backBufferDuration"))) / 1000), RETAIN_BACK_BUFFER_FROM_KEYFRAME);
         if (loadControlMap.get("targetBufferBytes") != null) {
           builder.setTargetBufferBytes((Integer) loadControlMap.get("targetBufferBytes"));
         }
@@ -282,6 +288,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                 (float) ((double) ((Double) livePlaybackSpeedControlMap.get("minPossibleLiveOffsetSmoothingFactor"))));
         livePlaybackSpeedControl = builder.build();
       }
+    }
+    if (loadControl == null) {
+      loadControl = new DefaultLoadControl.Builder()
+          .setBackBuffer(DefaultLoadControl.DEFAULT_BACK_BUFFER_DURATION_MS, RETAIN_BACK_BUFFER_FROM_KEYFRAME)
+          .build();
     }
   }
   private void resetDecodersStrategy() {
@@ -1329,7 +1340,30 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     videoEventChannel.success(event);
   }
 
+  /// nothing shows the texture without a started activity. only the video track goes off, sources keep loading and caching.
+  void setVideoHidden(boolean hidden) {
+    if (videoHidden == hidden) return;
+    videoHidden = hidden;
+    if (player == null) return;
+    player.setTrackSelectionParameters(
+      player.getTrackSelectionParameters()
+        .buildUpon()
+        .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, hidden)
+        .build()
+    );
+    ppLoopingPlayer(player.getPlayWhenReady());
+    // -- the looping player only got paused, its format is there already
+    if (!hidden && videoInfoOutdated && loopingPlayer != null) sendVideoInfo();
+  }
+
+  @Override
+  public void onRenderedFirstFrame() {
+    if (videoInfoOutdated) sendVideoInfo();
+  }
+
   private void sendVideoInfo() {
+    videoInfoOutdated = videoHidden;
+    if (videoHidden) return;
     final Map<String, Object> videoInfoMap = new HashMap<String, Object>();
     final Format videoInfo = (loopingPlayer != null ? loopingPlayer : player).getVideoFormat();
     videoInfoMap.put("textureId", videoOptions == null || videoInfo == null || surfaceTextureEntry == null ? -1 : surfaceTextureEntry.id());
@@ -1444,6 +1478,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         player.getTrackSelectionParameters()
           .buildUpon()
           .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+          .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, videoHidden)
           .build()
       );
       player.setPreferredAudioDevice(outputManager.getPreferredDevice());
@@ -1724,7 +1759,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
   public void ppLoopingPlayer(Boolean playWhenReady) {
     if (loopingPlayer != null)
-      loopingPlayer.setPlayWhenReady(playWhenReady);
+      loopingPlayer.setPlayWhenReady(playWhenReady && !videoHidden);
   }
 
   public void play(Result result) {

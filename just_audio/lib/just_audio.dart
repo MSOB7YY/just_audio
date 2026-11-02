@@ -851,6 +851,8 @@ class AudioPlayer {
       updatePosition: initialPosition ?? Duration.zero,
       audioTracks: null,
     ));
+    // -- events only report window changes, the reset above already cleared it
+    if (_liveWindowSubject.value != null) _liveWindowSubject.add(null);
     _audioSource = source;
     if (keepOldVideoSource == false) _videoOptions = videoOptions;
     _audioTrackId = audioTrackId;

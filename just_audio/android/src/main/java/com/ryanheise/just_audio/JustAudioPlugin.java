@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.Intent;
 import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
+import androidx.lifecycle.Lifecycle;
+import androidx.lifecycle.LifecycleEventObserver;
 import androidx.media3.common.util.UnstableApi;
 
 import io.flutter.embedding.engine.FlutterEngine;
@@ -11,6 +13,7 @@ import io.flutter.embedding.engine.FlutterEngine.EngineLifecycleListener;
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.embedding.engine.plugins.activity.ActivityAware;
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
+import io.flutter.embedding.engine.plugins.lifecycle.HiddenLifecycleReference;
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
@@ -27,6 +30,7 @@ import io.flutter.view.TextureRegistry;
   private MainMethodCallHandler methodCallHandler;
   private Context applicationContext;
   private ActivityPluginBinding activityBinding;
+  private Lifecycle activityLifecycle;
 
   @Override
   public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
@@ -65,11 +69,13 @@ import io.flutter.view.TextureRegistry;
     activityBinding = binding;
     binding.addOnNewIntentListener(this);
     onNewIntent(binding.getActivity().getIntent());
+    activityLifecycle = ((HiddenLifecycleReference) binding.getLifecycle()).getLifecycle();
+    activityLifecycle.addObserver(activityVisibilityObserver);
   }
 
   @Override
   public void onDetachedFromActivityForConfigChanges() {
-    onDetachedFromActivity();
+    detachFromActivity();
   }
 
   @Override
@@ -79,9 +85,32 @@ import io.flutter.view.TextureRegistry;
 
   @Override
   public void onDetachedFromActivity() {
+    detachFromActivity();
+    MainMethodCallHandler.setActivityVisible(false);
+  }
+
+  private void detachFromActivity() {
     if (activityBinding != null) activityBinding.removeOnNewIntentListener(this);
     activityBinding = null;
+    if (activityLifecycle != null) activityLifecycle.removeObserver(activityVisibilityObserver);
+    activityLifecycle = null;
   }
+
+  // -- started covers pip too, a stop for a config change is followed by a start right away.
+  private final LifecycleEventObserver activityVisibilityObserver = (owner, event) -> {
+    switch (event) {
+      case ON_START:
+        MainMethodCallHandler.setActivityVisible(true);
+        break;
+      case ON_STOP: {
+        final boolean isRecreating = activityBinding != null && activityBinding.getActivity().isChangingConfigurations();
+        if (!isRecreating) MainMethodCallHandler.setActivityVisible(false);
+        break;
+      }
+      default:
+        break;
+    }
+  };
 
   @Override
   public boolean onNewIntent(Intent intent) {

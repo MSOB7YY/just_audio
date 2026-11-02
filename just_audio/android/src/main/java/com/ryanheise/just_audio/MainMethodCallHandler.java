@@ -27,6 +27,13 @@ public class MainMethodCallHandler implements MethodCallHandler {
 
   static private final Map<String, AudioPlayer> players = new HashMap<>();
   static private String latestId;
+  static private boolean activityVisible = false;
+
+  static void setActivityVisible(boolean visible) {
+    if (activityVisible == visible) return;
+    activityVisible = visible;
+    for (AudioPlayer player : players.values()) player.setVideoHidden(!visible);
+  }
 
   static Collection<AudioPlayer> allPlayers() {
     return players.values();
@@ -86,7 +93,7 @@ public class MainMethodCallHandler implements MethodCallHandler {
         final boolean preferSWDecoders = Boolean.TRUE.equals(call.argument("preferSWDecoders"));
 
         players.put(id, new AudioPlayer(applicationContext, messenger, id, call.argument("audioLoadConfiguration"),
-            rawAudioEffects, preferSWDecoders, textureRegistry));
+            rawAudioEffects, preferSWDecoders, textureRegistry, !activityVisible));
         result.success(null);
         break;
       }
