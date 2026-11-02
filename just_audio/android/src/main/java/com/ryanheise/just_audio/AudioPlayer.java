@@ -138,6 +138,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   private RendererTier rendererTier = RendererTier.HW;
   private boolean didFallbackForItem = false;
 
+  // -- a flutter texture shows frames as soon as they're released (a SurfaceView waits for their timestamp),
+  // -- so release them on time instead of up to 50 ms early. the media fork wakes the loop right then.
+  private static final long VIDEO_EARLY_RELEASE_US = 1_000;
+
   // -- vendor lossless decoders can label 24-bit output as float (static noise), platform and extension decoders are exact.
   private static final MediaCodecSelector NO_VENDOR_LOSSLESS_CODEC_SELECTOR = (mimeType, requiresSecureDecoder, requiresTunnelingDecoder) -> {
     List<MediaCodecInfo> infos = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
@@ -1469,7 +1473,9 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         }
       }.setExtensionRendererMode(rendererMode)
           .setMediaCodecSelector(rendererTier == RendererTier.SW ? SOFTWARE_FIRST_CODEC_SELECTOR : NO_VENDOR_LOSSLESS_CODEC_SELECTOR)
-          .setEnableDecoderFallback(true);
+          .setEnableDecoderFallback(true)
+          .setVideoRendererEarlySchedulingThresholdUs(VIDEO_EARLY_RELEASE_US)
+          .setEnableMediaCodecVideoRendererDurationToProgressUs(true);
 
       builder.setRenderersFactory(renderersFactory);
       player = builder.build();
