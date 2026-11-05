@@ -1307,13 +1307,19 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         // builder.setLoadControl(loadControl.build());
         // }
         loopingPlayer = builder.build();
+        // -- the main player has the audio, a muted track would still be decoded and mixed
+        loopingPlayer.setTrackSelectionParameters(
+          loopingPlayer.getTrackSelectionParameters()
+            .buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+            .build()
+        );
         if (surface != null) {
           loopingPlayer.setVideoSurface(surface);
         }
       }
       loopingPlayer.setMediaSource(this.videoOptions.source);
       loopingPlayer.prepare();
-      loopingPlayer.setVolume(0);
       loopingPlayer.setRepeatMode(Player.REPEAT_MODE_ONE);
       loopingPlayer.addListener(new Player.Listener() {
         @Override
@@ -1773,6 +1779,11 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
       result.success(new HashMap<String, Object>());
       return;
     }
+    final boolean isHeldForUsbClaim = outputManager.holdPlayForUsbClaim(this);
+    if (isHeldForUsbClaim) {
+      result.success(new HashMap<String, Object>());
+      return;
+    }
     if (playResult != null) {
       playResult.success(new HashMap<String, Object>());
     }
@@ -1789,6 +1800,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
   }
 
   public void pause() {
+    outputManager.cancelResumeAfterUsbClaim(this);
     if (!player.getPlayWhenReady())
       return;
     player.setPlayWhenReady(false);

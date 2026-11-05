@@ -19,6 +19,7 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -94,7 +95,7 @@ final class UsbDirectManager {
 
   @Nullable private UsbDevice pendingDevice;
   private int claimGeneration;
-  private boolean isPlaybackActive;
+  private List<AudioPlaybackConfiguration> activePlaybacks = Collections.emptyList();
   private long lastActivePlaybackUptime;
 
   UsbDirectManager(Context context, AudioManager audioManager, Handler handler, Listener listener) {
@@ -107,20 +108,26 @@ final class UsbDirectManager {
 
   @RequiresApi(26)
   private void followPlayback(AudioManager audioManager) {
-    final boolean isActiveNow = !audioManager.getActivePlaybackConfigurations().isEmpty();
-    onPlaybackChanged(isActiveNow);
+    final List<AudioPlaybackConfiguration> activeNow = audioManager.getActivePlaybackConfigurations();
+    onPlaybackChanged(activeNow);
     audioManager.registerAudioPlaybackCallback(new AudioManager.AudioPlaybackCallback() {
       @Override
       public void onPlaybackConfigChanged(List<AudioPlaybackConfiguration> configs) {
-        onPlaybackChanged(!configs.isEmpty());
+        onPlaybackChanged(configs);
       }
     }, handler);
   }
 
-  private void onPlaybackChanged(boolean isActive) {
-    if (isActive || isPlaybackActive) lastActivePlaybackUptime = SystemClock.uptimeMillis();
-    isPlaybackActive = isActive;
-    if (!isActive && pendingDevice != null && STATE_WAITING_PLAYBACK.equals(state)) continueClaim();
+  private void onPlaybackChanged(List<AudioPlaybackConfiguration> configs) {
+    if (!configs.isEmpty() || !activePlaybacks.isEmpty()) lastActivePlaybackUptime = SystemClock.uptimeMillis();
+    activePlaybacks = configs;
+    if (pendingDevice == null || !STATE_WAITING_PLAYBACK.equals(state)) return;
+    if (configs.isEmpty()) continueClaim();
+    else logBlockingPlayback();
+  }
+
+  private void logBlockingPlayback() {
+    Log.i(TAG, "claim waits for playback: " + activePlaybacks);
   }
 
   static boolean isDeviceAttachedIntent(Intent intent) {
@@ -138,6 +145,10 @@ final class UsbDirectManager {
   @Nullable
   UsbAudioDevice getDevice() {
     return device;
+  }
+
+  boolean isClaiming() {
+    return pendingDevice != null;
   }
 
   void setEnabled(boolean enabled) {
@@ -257,7 +268,8 @@ final class UsbDirectManager {
     @Nullable final UsbDevice usbDevice = pendingDevice;
     if (usbDevice == null) return;
     final String deviceName = UsbAudioDevice.displayNameOf(usbDevice);
-    if (isPlaybackActive) {
+    if (!activePlaybacks.isEmpty()) {
+      logBlockingPlayback();
       setState(STATE_WAITING_PLAYBACK, deviceName);
       listener.onUsbDirectChanged(false);
       return;

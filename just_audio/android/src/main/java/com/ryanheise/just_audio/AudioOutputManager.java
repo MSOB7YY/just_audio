@@ -25,8 +25,10 @@ import io.flutter.plugin.common.BinaryMessenger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /// Output device selection and bit-perfect USB playback, shared by every player: Android 14's bit-perfect mixer, or
 /// any Android through [UsbDirectManager] driving the dac itself. A bit-perfect stream is only ever written as
@@ -74,7 +76,7 @@ final class AudioOutputManager {
   private Map<String, Object> status = statusOf(REASON_DISABLED, null, 0, 0);
   private int usbStreamSampleRate;
   private int usbStreamBitDepth;
-  private final List<AudioPlayer> playersPausedForUsbClaim = new ArrayList<>();
+  private final Set<AudioPlayer> playersResumingAfterUsbClaim = new HashSet<>();
 
   private AudioOutputManager(Context context) {
     audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
@@ -82,16 +84,16 @@ final class AudioOutputManager {
       @Override
       public void onUsbDirectClaiming() {
         for (AudioPlayer player : MainMethodCallHandler.allPlayers()) {
-          if (player.pauseForAudioOutput()) playersPausedForUsbClaim.add(player);
+          if (player.pauseForAudioOutput()) playersResumingAfterUsbClaim.add(player);
         }
       }
 
       @Override
       public void onUsbDirectClaimEnded(boolean resume) {
         if (resume) {
-          for (AudioPlayer player : playersPausedForUsbClaim) player.resumeForAudioOutput();
+          for (AudioPlayer player : playersResumingAfterUsbClaim) player.resumeForAudioOutput();
         }
-        playersPausedForUsbClaim.clear();
+        playersResumingAfterUsbClaim.clear();
       }
 
       @Override
@@ -137,6 +139,17 @@ final class AudioOutputManager {
   @Nullable
   UsbAudioDevice getUsbDevice() {
     return usbDirect.getDevice();
+  }
+
+  /// a play during a claim would reach the dac through android's mixer and keep the claim waiting, so it starts once the claim ends.
+  boolean holdPlayForUsbClaim(AudioPlayer player) {
+    if (!usbDirect.isClaiming()) return false;
+    playersResumingAfterUsbClaim.add(player);
+    return true;
+  }
+
+  void cancelResumeAfterUsbClaim(AudioPlayer player) {
+    playersResumingAfterUsbClaim.remove(player);
   }
 
   void setUsbDirectEnabled(boolean enabled) {
