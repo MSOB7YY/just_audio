@@ -44,6 +44,20 @@ struct Biquad {
   void lowPass(double frequency, double q, double rate) { design(frequency, q, rate, false); }
   void highPass(double frequency, double q, double rate) { design(frequency, q, rate, true); }
 
+  void lowShelf(double frequency, double q, double gainDb, double rate) {
+    const double clamped = std::min(frequency, rate * 0.45);
+    const double w0 = 2.0 * kPi * clamped / rate;
+    const double cosW = std::cos(w0);
+    const double amplitude = std::pow(10.0, gainDb / 40.0);
+    const double alphaTerm = std::sqrt(amplitude) * std::sin(w0) / q;
+    const double a0 = (amplitude + 1.0) + (amplitude - 1.0) * cosW + alphaTerm;
+    b0 = amplitude * ((amplitude + 1.0) - (amplitude - 1.0) * cosW + alphaTerm) / a0;
+    b1 = 2.0 * amplitude * ((amplitude - 1.0) - (amplitude + 1.0) * cosW) / a0;
+    b2 = amplitude * ((amplitude + 1.0) - (amplitude - 1.0) * cosW - alphaTerm) / a0;
+    a1 = -2.0 * ((amplitude - 1.0) + (amplitude + 1.0) * cosW) / a0;
+    a2 = ((amplitude + 1.0) + (amplitude - 1.0) * cosW - alphaTerm) / a0;
+  }
+
   double run(double x) {
     const double y = b0 * x + z1;
     z1 = b1 * x - a1 * y + z2;
@@ -200,6 +214,7 @@ class Compressor {
 };
 
 /// adds the harmonics of the lowest notes, small drivers that can't play them still give the ear their pitch.
+/// a low shelf lifts the notes themselves for drivers that can.
 class BassEnhancer {
  public:
   void prepare(double rate) {
@@ -207,6 +222,7 @@ class BassEnhancer {
     lowB_.lowPass(120.0, 0.7071, rate);
     harmonicsHighPass_.highPass(90.0, 0.7071, rate);
     harmonicsLowPass_.lowPass(600.0, 0.7071, rate);
+    lowShelf_.lowShelf(100.0, 0.7071, 6.0, rate);
   }
 
   void clear() {
@@ -214,6 +230,7 @@ class BassEnhancer {
     lowB_.clear();
     harmonicsHighPass_.clear();
     harmonicsLowPass_.clear();
+    lowShelf_.clear();
   }
 
   void process(float* x, int frames, int channels, Ramp ramp, float intensity) {
@@ -224,7 +241,8 @@ class BassEnhancer {
       const double mono = isStereo ? (x[0] + x[1]) * 0.5 : x[0];
       const double low = lowB_.run(lowA_.run(mono));
       const double harmonics = harmonicsLowPass_.run(harmonicsHighPass_.run(std::fabs(low)));
-      const float added = static_cast<float>(mix * intensity * (1.6 * harmonics + 0.35 * low));
+      const double lift = lowShelf_.run(mono) - mono;
+      const float added = static_cast<float>(mix * intensity * (1.6 * harmonics + lift));
       x[0] += added;
       if (isStereo) x[1] += added;
     }
@@ -235,6 +253,7 @@ class BassEnhancer {
   Biquad lowB_;
   Biquad harmonicsHighPass_;
   Biquad harmonicsLowPass_;
+  Biquad lowShelf_;
 };
 
 /// a gentle waveshaper, mostly even harmonics like a triode with a few odd ones, and a softer top end.
