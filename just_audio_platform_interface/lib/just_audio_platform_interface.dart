@@ -706,6 +706,7 @@ class InitRequest {
   final List<AudioEffectMessage> androidAudioEffects;
   final List<AudioEffectMessage> darwinAudioEffects;
   final bool? preferSWDecoders;
+  final bool isMainPlayer;
 
   const InitRequest({
     required this.id,
@@ -713,6 +714,7 @@ class InitRequest {
     this.androidAudioEffects = const [],
     this.darwinAudioEffects = const [],
     this.preferSWDecoders,
+    this.isMainPlayer = true,
   });
 
   Map<dynamic, dynamic> toMap() => <dynamic, dynamic>{
@@ -725,6 +727,7 @@ class InitRequest {
             .map((audioEffect) => audioEffect.toMap())
             .toList(),
         'preferSWDecoders': preferSWDecoders,
+        'isMainPlayer': isMainPlayer,
       };
 }
 

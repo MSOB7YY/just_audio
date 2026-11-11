@@ -78,7 +78,8 @@ public class MainMethodCallHandler implements MethodCallHandler {
           oldplayer.dispose();
           players.remove(id);
         }
-        latestId = id;
+        final boolean isMainPlayer = Boolean.TRUE.equals(call.argument("isMainPlayer"));
+        if (isMainPlayer) latestId = id;
         final List<Object> rawAudioEffects = call.argument("androidAudioEffects");
 
         Context applicationContext = binding.getApplicationContext();
@@ -112,7 +113,7 @@ public class MainMethodCallHandler implements MethodCallHandler {
         if (player != null) {
           player.dispose();
           players.remove(id);
-          if (latestId.equals(id))
+          if (id.equals(latestId))
             latestId = null;
         }
         outputManager().releaseIfUnused();

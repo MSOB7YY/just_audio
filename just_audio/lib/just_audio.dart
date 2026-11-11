@@ -85,6 +85,8 @@ class AudioPlayer {
 
   final bool? _preferSWDecoders;
 
+  final bool _isMainPlayer;
+
   /// This is `true` when the audio player needs to engage the native platform
   /// side of the plugin to decode or play audio, and is `false` when the native
   /// resources are not needed (i.e. after initial instantiation and after [stop]).
@@ -209,12 +211,16 @@ class AudioPlayer {
   ///
   /// The default audio loading and buffering behaviour can be configured via
   /// the [audioLoadConfiguration] parameter.
+  ///
+  /// Set [isMainPlayer] to `false` for side players (previews, sound effects)
+  /// so the native side keeps reporting the main player's state.
   AudioPlayer({
     String? userAgent,
     bool handleInterruptions = true,
     bool androidApplyAudioAttributes = true,
     bool handleAudioSessionActivation = true,
     bool? preferSWDecoders,
+    bool isMainPlayer = true,
     AudioLoadConfiguration? audioLoadConfiguration,
     AudioPipeline? audioPipeline,
   })  : _id = _uuid.v4(),
@@ -223,6 +229,7 @@ class AudioPlayer {
             androidApplyAudioAttributes && _isAndroid(),
         _handleAudioSessionActivation = handleAudioSessionActivation,
         _preferSWDecoders = preferSWDecoders,
+        _isMainPlayer = isMainPlayer,
         _audioLoadConfiguration = audioLoadConfiguration,
         _audioPipeline = audioPipeline ?? AudioPipeline() {
     _audioPipeline._setup(this);
@@ -1610,6 +1617,7 @@ class AudioPlayer {
                       .toList()
                   : [],
               preferSWDecoders: _preferSWDecoders,
+              isMainPlayer: _isMainPlayer,
             )))
           : (_idlePlatform =
               _IdleAudioPlayer(id: _id, sequenceStream: sequenceStream));
